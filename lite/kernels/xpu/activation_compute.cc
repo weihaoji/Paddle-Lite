@@ -154,6 +154,42 @@ void SignCompute::Run() {
   CHECK_EQ(r, 0);
 }
 
+void HardSwishCompute::Run() {
+  auto& param = this->Param<param_t>();
+  auto& ctx = this->ctx_->As<XPUContext>();
+
+  int r = xdnn::hard_swish(ctx.GetRawContext(),    /* context */
+                           param.X->data<float>(), /* x */
+                           param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                           param.X->numel()); /* len */
+  CHECK_EQ(r, 0);
+}
+
+void HardSigmoidCompute::Run() {
+  auto& param = this->Param<param_t>();
+  auto& ctx = this->ctx_->As<XPUContext>();
+
+  int r =
+      xdnn::hard_sigmoid(ctx.GetRawContext(),    /* context */
+                         param.X->data<float>(), /* x */
+                         param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                         param.X->numel(),
+                         param.hard_sigmoid_slope); /* len */
+  CHECK_EQ(r, 0);
+}
+
+void LeakyReluCompute::Run() {
+  auto& param = this->Param<param_t>();
+  auto& ctx = this->ctx_->As<XPUContext>();
+
+  int r = xdnn::leaky_relu(ctx.GetRawContext(),    /* context */
+                           param.X->data<float>(), /* x */
+                           param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                           param.X->numel(),
+                           param.Leaky_relu_alpha); /* len */
+  CHECK_EQ(r, 0);
+}
+
 }  // namespace xpu
 }  // namespace kernels
 }  // namespace lite
@@ -222,6 +258,36 @@ REGISTER_LITE_KERNEL(reciprocal,
                      kFloat,
                      kNCHW,
                      paddle::lite::kernels::xpu::ReciprocalCompute,
+                     def)
+    .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(hard_sigmoid,
+                     kXPU,
+                     kFloat,
+                     kNCHW,
+                     paddle::lite::kernels::xpu::HardSigmoidCompute,
+                     def)
+    .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(hard_swish,
+                     kXPU,
+                     kFloat,
+                     kNCHW,
+                     paddle::lite::kernels::xpu::HardSwishCompute,
+                     def)
+    .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(leaky_relu,
+                     kXPU,
+                     kFloat,
+                     kNCHW,
+                     paddle::lite::kernels::xpu::LeakyReluCompute,
                      def)
     .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})

@@ -28,13 +28,27 @@ void BatchNormCompute::Run() {
   float epsilon = param.epsilon;
   auto& x_dims = param.x->dims();
 
+  int n, c, h, w;
+  CHECK(x_dims.size() == 2 || x_dims.size() == 4);
+  if (x_dims.size() == 4) {
+    n = x_dims[0];
+    c = x_dims[1];
+    h = x_dims[2];
+    w = x_dims[3];
+  } else if (x_dims.size() == 2) {
+    n = x_dims[0];
+    c = x_dims[1];
+    h = 1;
+    w = 1;
+  }
+
   int r = xdnn::batch_norm_infer_forward(
       ctx.GetRawContext(),                        /* context */
       epsilon,                                    /* epsilon */
-      x_dims[0],                                  /* img_n */
-      x_dims[1],                                  /* img_c */
-      x_dims[2],                                  /* img_h */
-      x_dims[3],                                  /* img_w */
+      n,                                          /* img_n */
+      c,                                          /* img_c */
+      h,                                          /* img_h */
+      w,                                          /* img_w */
       param.x->data<float>(),                     /* img_gm */
       param.y->mutable_data<float>(TARGET(kXPU)), /* out_gm */
       param.scale->data<float>(),                 /* scale_gm */

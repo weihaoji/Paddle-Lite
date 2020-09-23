@@ -110,6 +110,33 @@ class SignCompute : public KernelLite<TARGET(kXPU), PRECISION(kFloat)> {
   virtual ~SignCompute() = default;
 };
 
+class HardSwishCompute : public KernelLite<TARGET(kXPU), PRECISION(kFloat)> {
+ public:
+  using param_t = operators::ActivationParam;
+
+  virtual void Run();
+
+  virtual ~HardSwishCompute() = default;
+};
+
+class HardSigmoidCompute : public KernelLite<TARGET(kXPU), PRECISION(kFloat)> {
+ public:
+  using param_t = operators::ActivationParam;
+
+  virtual void Run();
+
+  virtual ~HardSigmoidCompute() = default;
+};
+
+class LeakyReluCompute : public KernelLite<TARGET(kXPU), PRECISION(kFloat)> {
+ public:
+  using param_t = operators::ActivationParam;
+
+  virtual void Run();
+
+  virtual ~LeakyReluCompute() = default;
+};
+
 }  // namespace xpu
 }  // namespace kernels
 }  // namespace lite

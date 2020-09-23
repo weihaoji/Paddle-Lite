@@ -45,26 +45,57 @@ void Pool2DCompute::Run() {
     }
   }
 
-  int r = xdnn::pooling_forward<float, float>(
-      ctx.GetRawContext(),                             /* context */
-      param.x->data<float>(),                          /* x */
-      param.output->mutable_data<float>(TARGET(kXPU)), /* y */
-      nullptr,                                         /* y_index */
-      type,                                            /* type */
-      x_dims[0] * x_dims[1],                           /* c */
-      x_dims[2],                                       /* in_h */
-      x_dims[3],                                       /* in_w */
-      paddings[0],                                     /* pad_left */
-      paddings[1],                                     /* pad_right */
-      paddings[2],                                     /* pad_up */
-      paddings[3],                                     /* pad_down */
-      param.ksize[0],                                  /* win_h */
-      param.ksize[1],                                  /* win_w */
-      param.strides[0],                                /* stride_h */
-      param.strides[1],                                /* stride_w */
-      o_dims[2],                                       /* out_h */
-      o_dims[3] /* out_w */);
-  CHECK_EQ(r, 0);
+  if (param.adaptive) {
+    if (param.pooling_type == "avg") {
+      int r = xdnn::adaptive_avg_pool2d(
+          ctx.GetRawContext(),                             /* context */
+          param.x->data<float>(),                          /* x */
+          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          x_dims[0],
+          x_dims[1],
+          x_dims[2],
+          x_dims[3],
+          param.ksize[0],
+          param.ksize[1],
+          true);
+      CHECK_EQ(r, 0);
+    } else {
+      int r = xdnn::adaptive_max_pool2d(
+          ctx.GetRawContext(),                             /* context */
+          param.x->data<float>(),                          /* x */
+          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          nullptr,
+          x_dims[0],
+          x_dims[1],
+          x_dims[2],
+          x_dims[3],
+          param.ksize[0],
+          param.ksize[1],
+          true);
+      CHECK_EQ(r, 0);
+    }
+  } else {
+    int r = xdnn::pooling_forward<float, float>(
+        ctx.GetRawContext(),                             /* context */
+        param.x->data<float>(),                          /* x */
+        param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+        nullptr,                                         /* y_index */
+        type,                                            /* type */
+        x_dims[0] * x_dims[1],                           /* c */
+        x_dims[2],                                       /* in_h */
+        x_dims[3],                                       /* in_w */
+        paddings[0],                                     /* pad_left */
+        paddings[1],                                     /* pad_right */
+        paddings[2],                                     /* pad_up */
+        paddings[3],                                     /* pad_down */
+        param.ksize[0],                                  /* win_h */
+        param.ksize[1],                                  /* win_w */
+        param.strides[0],                                /* stride_h */
+        param.strides[1],                                /* stride_w */
+        o_dims[2],                                       /* out_h */
+        o_dims[3] /* out_w */);
+    CHECK_EQ(r, 0);
+  }
 }
 
 }  // namespace xpu
@@ -76,4 +107,15 @@ REGISTER_LITE_KERNEL(
     pool2d, kXPU, kFloat, kNCHW, paddle::lite::kernels::xpu::Pool2DCompute, def)
     .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(max_pool2d_with_index,
+                     kXPU,
+                     kFloat,
+                     kNCHW,
+                     paddle::lite::kernels::xpu::Pool2DCompute,
+                     def)
+    .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Mask", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
