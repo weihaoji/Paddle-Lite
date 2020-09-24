@@ -1891,11 +1891,13 @@ struct XPUConv2dParam : ParamBase {
   lite::Tensor* OutputMax{nullptr};
 
   int groups{1};
-  std::string act_type{""};
+  int act_type{-1};
   std::string filter_type{""};
   std::vector<int> strides;
   std::shared_ptr<std::vector<int>> paddings;
   std::shared_ptr<std::vector<int>> dilations;
+  float leaky_relu_alpha{0.1f};
+  float hard_sigmoid_slope{0.2f};
 };
 
 struct XPUSfaHeadParam : ParamBase {

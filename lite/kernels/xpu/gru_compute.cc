@@ -106,7 +106,6 @@ void GruCompute::PrepareLayout(const paddle::lite::LoD& lods,
     int length = lod[seq_id + 1] - lod[seq_id];
     seq_info.push_back(SeqInfo(lod[seq_id], length, seq_id));
   }
-  std::cout << "seq len is " << seq_info.size() << std::endl;
   std::stable_sort(seq_info.begin(), seq_info.end(), [](SeqInfo a, SeqInfo b) {
     return a.length > b.length;
   });

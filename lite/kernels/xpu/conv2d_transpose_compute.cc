@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "lite/kernels/xpu/conv2d_transpose_compute.h"
+#include <vector>
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
 
@@ -20,22 +21,6 @@ namespace paddle {
 namespace lite {
 namespace kernels {
 namespace xpu {
-
-template <>
-void Conv2dTransposeCompute<PRECISION(kFloat)>::PrepareForRun() {
-  maxs_xpu_guard_ =
-      TargetWrapperXPU::MallocScratchPad(8 * sizeof(float), false /* use_l3 */);
-
-  auto& ctx = this->ctx_->As<XPUContext>();
-  auto& param = this->Param<param_t>();
-  float* max_filter_ptr = reinterpret_cast<float*>(maxs_xpu_guard_->addr_);
-  int filter_size = param.filter->numel();
-  int r = xdnn::findmax<float>(ctx.GetRawContext(),
-                               param.filter->data<float>(),
-                               filter_size,
-                               max_filter_ptr);
-  CHECK_EQ(r, 0);
-}
 
 template <>
 void Conv2dTransposeCompute<PRECISION(kFloat)>::Run() {
@@ -51,37 +36,27 @@ void Conv2dTransposeCompute<PRECISION(kFloat)>::Run() {
   auto paddings = *param.paddings;
   auto dilations = *param.dilations;
 
-  float* max_filter_ptr = reinterpret_cast<float*>(maxs_xpu_guard_->addr_);
-  float* max_image_ptr = max_filter_ptr + 4;
-  int image_size = param.x->numel();
-
-  // find image max
-  int r = xdnn::findmax<float>(
-      ctx.GetRawContext(), param.x->data<float>(), image_size, max_image_ptr);
-  CHECK_EQ(r, 0);
-
-  r = xdnn::conv2d_backward_int16(
+  int ret = xdnn::conv2d_transpose<float, float, float, int16_t>(
       ctx.GetRawContext(),
-      out_dims[0],
-      out_dims[1],
-      out_dims[2],
-      out_dims[3],
-      in_dims[1],
-      w_dims[2],
-      w_dims[3],
-      strides[0],
-      strides[1],
-      paddings[0],
-      paddings[1],
-      dilations[0],
-      dilations[1],
-      groups,
       param.x->data<float>(),
       param.filter->data<float>(),
       param.output->mutable_data<float>(TARGET(kXPU)),
-      max_image_ptr,
-      max_filter_ptr);
-  CHECK_EQ(r, 0);
+      in_dims[0],
+      in_dims[1],
+      in_dims[2],
+      in_dims[3],
+      out_dims[1],
+      std::vector<int>{static_cast<int>(w_dims[2]),
+                       static_cast<int>(w_dims[3])},
+      strides,
+      paddings,
+      dilations,
+      groups,
+      nullptr,
+      nullptr,
+      nullptr,
+      true);
+  CHECK_EQ(ret, 0);
 }
 
 }  // namespace xpu

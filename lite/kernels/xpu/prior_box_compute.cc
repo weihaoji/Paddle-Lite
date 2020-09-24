@@ -125,6 +125,9 @@ void PriorBoxCompute::Run() {
     step_height = step_h;
   }
 
+  param.boxes->Resize({height, width, prior_num, 4});
+  param.variances->Resize({height, width, prior_num, 4});
+
   bool min_max_aspect_ratios_order = param.min_max_aspect_ratios_order;
   float* xpu_aspect_ratios =
       reinterpret_cast<float*>(xpu_aspect_ratios_guard_->addr_);
@@ -151,6 +154,7 @@ void PriorBoxCompute::Run() {
   CHECK_EQ(r, 0);
 
   // variances
+
   float* xpu_variances_in =
       reinterpret_cast<float*>(variance_xpu_guard_->addr_);
   r = xdnn::broadcast_ew(ctx.GetRawContext(),

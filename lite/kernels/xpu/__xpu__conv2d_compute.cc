@@ -14,6 +14,7 @@
 
 #include "lite/kernels/xpu/__xpu__conv2d_compute.h"
 #include <string>
+#include <vector>
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
 
@@ -47,10 +48,7 @@ void XPUConv2dCompute::Run() {
 
   std::string filter_type = param.filter_type;
   int groups = param.groups;
-
-  int act_type = (param.act_type == "relu")
-                     ? xdnn::Activation_t::RELU
-                     : xdnn::Activation_t::LINEAR;  // -1 means not init
+  int act_type = (param.act_type == -1) ? 0 : param.act_type;
   const auto* bias = param.Bias ? param.Bias->data<float>() : nullptr;
   const auto* branch = param.Branch ? param.Branch->data<float>() : nullptr;
   const float* input_max =
@@ -61,37 +59,154 @@ void XPUConv2dCompute::Run() {
   float* output = param.Output->mutable_data<float>(TARGET(kXPU));
 
   // TODO(luohang): now support for resnet50 first
-  CHECK_EQ(groups, 1);
   CHECK_EQ(filter_type, "int16");
-
   xdnn::Activation_t act((xdnn::Activation_t::act_enum)act_type);
-  int r = xdnn::conv2d_forward_int16<float, int16_t, float, float>(
-      ctx.GetRawContext(),            /* context */
-      batch,                          /* batch */
-      img_c,                          /* input_c */
-      img_h,                          /* input_h */
-      img_w,                          /* input_w */
-      filter_num,                     /* num_filter */
-      win_h,                          /* kernel_h */
-      win_w,                          /* kernel_w */
-      stride_h,                       /* stride_h */
-      stride_w,                       /* stride_w */
-      paddings_h,                     /* pad_h */
-      paddings_w,                     /* pad_w */
-      dilations_h,                    /* dilation_h */
-      dilations_w,                    /* dilation_w */
-      groups,                         /* group */
-      param.Input->data<float>(),     /* input bottom */
-      param.Filter->data<int16_t>(),  /* filter weight */
-      output,                         /* output top */
-      bias,                           /* bias */
-      branch,                         /* branch */
-      act,                            /* act type */
-      input_max,                      /* max_image_ptr */
-      param.FilterMax->data<float>(), /* max_filter_ptr */
-      output_max /* max_result_ptr */);
+  if (act_type == 5) {
+    act.leaky_alpha = param.leaky_relu_alpha;
+    CHECK(act.leaky_alpha >= 0.0001 && act.leaky_alpha <= 10);
+  } else if (act_type == 15) {
+    act.hard_sigmoid_slope = param.hard_sigmoid_slope;
+  }
 
-  CHECK_EQ(r, 0);
+  if ((win_h > 11) || (win_w > 11) || (stride_h > 10) || (stride_w > 10) ||
+      (paddings_h > 5) || (paddings_w > 5) ||
+      (img_h + paddings_h * 2 - win_h < 0) ||
+      (img_w + paddings_w * 2 - win_w < 0)) {
+    int r = xdnn::conv2d<float, int16_t, float, int16_t>(
+        ctx.GetRawContext(),           /* context */
+        param.Input->data<float>(),    /* input bottom */
+        param.Filter->data<int16_t>(), /* filter weight */
+        output,
+        batch,
+        img_c,
+        img_h,
+        img_w,
+        filter_num,
+        std::vector<int>{win_h, win_w},
+        param.strides,
+        paddings,
+        dilations,
+        groups,
+        input_max,
+        param.FilterMax->data<float>(), /* max_filter_ptr */
+        output_max,
+        true);
+
+    CHECK_EQ(r, 0);
+
+    float* y_broadcast = nullptr;
+
+    r = xpu_malloc(reinterpret_cast<void**>(&y_broadcast),
+                   param.Output->numel() * sizeof(float));
+    CHECK_EQ(r, 0);
+
+    if (bias) {
+      r = xdnn::broadcast_ew(ctx.GetRawContext(),
+                             bias,
+                             y_broadcast,
+                             batch,
+                             filter_num,
+                             img_h * img_w,
+                             xdnn::ElementwiseOp::ASSIGN);
+
+      CHECK_EQ(r, 0);
+
+      r = xdnn::elementwise_add(ctx.GetRawContext(), /* context */
+                                output,
+                                y_broadcast, /* y */
+                                y_broadcast,
+                                param.Output->numel());
+      CHECK_EQ(r, 0);
+    }
+
+    r = xdnn::activation_forward(ctx.GetRawContext(), /* context */
+                                 act,
+                                 param.Output->numel(),
+                                 y_broadcast,
+                                 output);
+    CHECK_EQ(r, 0);
+
+    xpu_free(y_broadcast);
+
+  } else if (act_type >= 14) {
+    int r = xdnn::conv2d_fusion<float, int16_t, float, int16_t>(
+        ctx.GetRawContext(),           /* context */
+        param.Input->data<float>(),    /* input bottom */
+        param.Filter->data<int16_t>(), /* filter weight */
+        output,
+        batch,
+        img_c,
+        img_h,
+        img_w,
+        filter_num,
+        std::vector<int>{win_h, win_w},
+        param.strides,
+        paddings,
+        dilations,
+        groups,
+        input_max,
+        param.FilterMax->data<float>(), /* max_filter_ptr */
+        output_max,
+        true,
+        bias,   /* bias */
+        branch, /* branch */
+        act);
+    CHECK_EQ(r, 0);
+
+  } else if (groups == 1) {
+    int r = xdnn::conv2d_forward_int16<float, int16_t, float, float>(
+        ctx.GetRawContext(),            /* context */
+        batch,                          /* batch */
+        img_c,                          /* input_c */
+        img_h,                          /* input_h */
+        img_w,                          /* input_w */
+        filter_num,                     /* num_filter */
+        win_h,                          /* kernel_h */
+        win_w,                          /* kernel_w */
+        stride_h,                       /* stride_h */
+        stride_w,                       /* stride_w */
+        paddings_h,                     /* pad_h */
+        paddings_w,                     /* pad_w */
+        dilations_h,                    /* dilation_h */
+        dilations_w,                    /* dilation_w */
+        groups,                         /* group */
+        param.Input->data<float>(),     /* input bottom */
+        param.Filter->data<int16_t>(),  /* filter weight */
+        output,                         /* output top */
+        bias,                           /* bias */
+        branch,                         /* branch */
+        act,                            /* act type */
+        input_max,                      /* max_image_ptr */
+        param.FilterMax->data<float>(), /* max_filter_ptr */
+        output_max /* max_result_ptr */);
+
+    CHECK_EQ(r, 0);
+
+  } else {
+    int r = xdnn::conv2d_int16_with_group<float, int16_t, float>(
+        ctx.GetRawContext(), /* context */
+        param.Input->data<float>(),
+        param.Filter->data<int16_t>(),
+        output,
+        batch,
+        img_c,
+        img_h,
+        img_w,
+        filter_num,
+        win_h,
+        win_w,
+        groups,
+        stride_h,
+        stride_w,
+        paddings_h,
+        paddings_w,
+        input_max,
+        param.FilterMax->data<float>(), /* max_filter_ptr */
+        output_max,
+        bias,
+        act);
+    CHECK_EQ(r, 0);
+  }
 }
 
 }  // namespace xpu

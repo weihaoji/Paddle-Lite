@@ -33,6 +33,10 @@ void CastCompute::Run() {
   int r = 0;
   // BOOL = 0;INT16 = 1;INT32 = 2;INT64 = 3;FP16 = 4;FP32 = 5;FP64 = 6;
   // SIZE_T = 19;UINT8 = 20;INT8 = 21;
+  auto mem_size = param.X->memory_size();
+  if (in_dtype == 3 && sizeof(int64_t) * numel > mem_size) {
+    in_dtype = 2;
+  }
 
   if (in_dtype == 5 && out_dtype == 5) {
     // float -> float

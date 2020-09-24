@@ -25,12 +25,10 @@ void ReluCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),      /* context */
-      xdnn::Activation_t::RELU, /* type */
-      param.X->numel(),         /* len */
-      param.X->data<float>(),   /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::relu(ctx.GetRawContext(),                          /* context */
+                     param.X->data<float>(),                       /* x */
+                     param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                     param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -38,12 +36,10 @@ void TanhCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),      /* context */
-      xdnn::Activation_t::TANH, /* type */
-      param.X->numel(),         /* len */
-      param.X->data<float>(),   /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::tanh(ctx.GetRawContext(),                          /* context */
+                     param.X->data<float>(),                       /* x */
+                     param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                     param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -51,12 +47,10 @@ void SigmoidCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),         /* context */
-      xdnn::Activation_t::SIGMOID, /* type */
-      param.X->numel(),            /* len */
-      param.X->data<float>(),      /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::sigmoid(ctx.GetRawContext(),    /* context */
+                        param.X->data<float>(), /* x */
+                        param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                        param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -64,12 +58,10 @@ void AbsCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),     /* context */
-      xdnn::Activation_t::ABS, /* type */
-      param.X->numel(),        /* len */
-      param.X->data<float>(),  /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::abs(ctx.GetRawContext(),                          /* context */
+                    param.X->data<float>(),                       /* x */
+                    param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                    param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -77,12 +69,10 @@ void ExpCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),     /* context */
-      xdnn::Activation_t::EXP, /* type */
-      param.X->numel(),        /* len */
-      param.X->data<float>(),  /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::exp(ctx.GetRawContext(),                          /* context */
+                    param.X->data<float>(),                       /* x */
+                    param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                    param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -90,12 +80,10 @@ void SquareCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),        /* context */
-      xdnn::Activation_t::SQUARE, /* type */
-      param.X->numel(),           /* len */
-      param.X->data<float>(),     /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::square(ctx.GetRawContext(),    /* context */
+                       param.X->data<float>(), /* x */
+                       param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                       param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 
@@ -116,12 +104,10 @@ void SqrtCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
-  int r = xdnn::activation_forward(
-      ctx.GetRawContext(),      /* context */
-      xdnn::Activation_t::SQRT, /* type */
-      param.X->numel(),         /* len */
-      param.X->data<float>(),   /* x */
-      param.Out->mutable_data<float>(TARGET(kXPU)) /* y */);
+  int r = xdnn::sqrt(ctx.GetRawContext(),                          /* context */
+                     param.X->data<float>(),                       /* x */
+                     param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                     param.X->numel());                            /* len */
   CHECK_EQ(r, 0);
 }
 

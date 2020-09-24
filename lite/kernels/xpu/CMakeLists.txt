@@ -37,6 +37,7 @@ else()
   add_kernel(yolo_box_compute_xpu XPU basic SRCS yolo_box_compute.cc DEPS ${lite_kernel_deps})
   add_kernel(prior_box_compute_xpu XPU basic SRCS prior_box_compute.cc DEPS ${lite_kernel_deps})
   add_kernel(box_coder_compute XPU basic SRCS box_coder_compute.cc DEPS ${lite_kernel_deps})
+  add_kernel(assign_value_compute XPU basic SRCS assign_value_compute.cc DEPS ${lite_kernel_deps})
 
   # extra
   add_kernel(lookup_table_compute_xpu XPU extra SRCS lookup_table_compute.cc DEPS ${lite_kernel_deps})

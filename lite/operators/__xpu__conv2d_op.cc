@@ -138,7 +138,13 @@ bool XPUConv2dOp::AttachImpl(const cpp::OpDesc& op_desc, lite::Scope* scope) {
   param_.dilations = std::make_shared<std::vector<int>>(dilations);
   param_.groups = op_desc.GetAttr<int>("groups");
   if (op_desc.HasAttr("act_type")) {
-    param_.act_type = op_desc.GetAttr<std::string>("act_type");
+    param_.act_type = op_desc.GetAttr<int>("act_type");
+  }
+  if (op_desc.HasAttr("leaky_relu_alpha")) {
+    param_.leaky_relu_alpha = op_desc.GetAttr<float>("leaky_relu_alpha");
+  }
+  if (op_desc.HasAttr("hard_sigmoid_slope")) {
+    param_.leaky_relu_alpha = op_desc.GetAttr<float>("hard_sigmoid_slope");
   }
 
   if (op_desc.HasAttr("filter_type")) {

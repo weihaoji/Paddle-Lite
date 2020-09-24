@@ -49,6 +49,14 @@ void DensityPriorBoxCompute::Run() {
   int img_w = param.image->dims()[3];
   int img_h = param.image->dims()[2];
 
+  int num_priors = 0;
+  for (size_t i = 0; i < density_size.size(); ++i) {
+    num_priors += (fixed_ratio.size()) * (pow(density_size[i], 2));
+  }
+
+  param.boxes->Resize({feature_h, feature_w, num_priors, 4});
+  param.variances->Resize({feature_h, feature_w, num_priors, 4});
+
   int r = xdnn::density_prior_box<float>(
       ctx.GetRawContext(),
       param.boxes->mutable_data<float>(TARGET(kXPU)),
@@ -65,11 +73,6 @@ void DensityPriorBoxCompute::Run() {
       is_clip);
 
   CHECK_EQ(r, 0);
-
-  int num_priors = 0;
-  for (size_t i = 0; i < density_size.size(); ++i) {
-    num_priors += (fixed_ratio.size()) * (pow(density_size[i], 2));
-  }
 
   // variances
   float* xpu_variances_in =
