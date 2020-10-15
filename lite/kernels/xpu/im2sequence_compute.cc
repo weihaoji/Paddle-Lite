@@ -42,8 +42,6 @@ void Im2SequenceCompute::Run() {
   int kernel_w = param.kernels[1];
   int stride_h = param.strides[0];
   int stride_w = param.strides[1];
-  int dilation_h = 1;
-  int dilation_w = 1;
   int pad_h = param.paddings[0];
   int pad_w = param.paddings[1];
 
@@ -55,26 +53,44 @@ void Im2SequenceCompute::Run() {
   out_offset.push_back(0);
   out_offset.push_back(output_height * output_width);
 
-  for (int batch_idx = 0; batch_idx < batch; batch_idx++) {
-    int r = xdnn::im2col_ocf(
-        ctx.GetRawContext(), /* context */
-        channel,
-        height,
-        width,
-        kernel_h,
-        kernel_w,
-        pad_h,
-        pad_w,
-        stride_h,
-        stride_w,
-        dilation_h,
-        dilation_w,
-        param.X->data<float>() + batch_idx * channel * height * width,
-        param.Out->mutable_data<float>(TARGET(kXPU)) +
-            batch_idx * output_height * output_width * channel * kernel_h *
-                kernel_w);
-    CHECK_EQ(r, 0);
-  }
+  XPUScratchPadGuard xpu_x_nhwc_guard_ = TargetWrapperXPU::MallocScratchPad(
+      param.X->numel() * sizeof(float), false /*use_l3 */);
+  float* x_nhwc = reinterpret_cast<float*>(xpu_x_nhwc_guard_->addr_);
+
+  XPUScratchPadGuard xpu_y_ofc_guard_ = TargetWrapperXPU::MallocScratchPad(
+      param.Out->numel() * sizeof(float), false /*use_l3 */);
+  float* y_ofc = reinterpret_cast<float*>(xpu_y_ofc_guard_->addr_);
+
+  int r = xdnn::transpose<float>(ctx.GetRawContext(),
+                                 param.X->data<float>(),
+                                 x_nhwc,
+                                 {batch, channel, height, width},
+                                 {0, 2, 3, 1});
+
+  CHECK_EQ(r, 0);
+  r = xdnn::im2col<float>(ctx.GetRawContext(),
+                          x_nhwc,
+                          y_ofc,
+                          batch,
+                          channel,
+                          height,
+                          width,
+                          param.kernels,
+                          param.strides,
+                          param.paddings,
+                          {1, 1},
+                          false);
+
+  CHECK_EQ(r, 0);
+  r = xdnn::transpose<float>(
+      ctx.GetRawContext(),
+      y_ofc,
+      param.Out->mutable_data<float>(TARGET(kXPU)),
+      {batch, output_height * output_width, kernel_h * kernel_w, channel},
+      {0, 1, 3, 2});
+
+  CHECK_EQ(r, 0);
+
   auto lod = param.Out->mutable_lod();
   lod->resize(1);
   (*lod)[0] = out_offset;
