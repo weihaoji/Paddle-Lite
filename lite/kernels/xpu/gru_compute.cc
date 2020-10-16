@@ -150,7 +150,6 @@ void GruCompute::Run() {
   float* batch_gate = param.batch_gate->mutable_data<float>(TARGET(kXPU));
   float* batch_reset_hidden_prev =
       param.batch_reset_hidden_prev->mutable_data<float>(TARGET(kXPU));
-  float* batch_hidden = param.hidden->mutable_data<float>(TARGET(kXPU));
   bool origin_mode = param.origin_mode;
   int frame_size = input->dims()[1] / 3;
 
@@ -165,6 +164,13 @@ void GruCompute::Run() {
   PrepareLayout(lods, offset_xpu, new_offset_xpu, idx_sorted_by_width_data_xpu);
   int max_width = seq_info[0].length;
 
+  // prepare batch_hidden
+  XPUScratchPadGuard xpu_batch_hidden_guard_ =
+      TargetWrapperXPU::MallocScratchPad(
+          lod[lod.size() - 1] * frame_size * sizeof(float), false /*use_l3 */);
+  float* batch_hidden =
+      reinterpret_cast<float*>(xpu_batch_hidden_guard_->addr_);
+
   // sequence to batch
   XPUScratchPadGuard xpu_batch_data_guard_ = TargetWrapperXPU::MallocScratchPad(
       lod[lod.size() - 1] * frame_size * 3 * sizeof(float), false /*use_l3 */);
@@ -177,7 +183,7 @@ void GruCompute::Run() {
                                      offset_xpu,
                                      frame_size * 3,
                                      param.input->data<float>(),
-                                     batch_data);
+                                     batch_gate);
     CHECK_EQ(ret, 0);
     ret = xdnn::search_seq2batch(ctx.GetRawContext(), /* context */
                                  lod.size() - 1,
@@ -186,7 +192,7 @@ void GruCompute::Run() {
                                  idx_sorted_by_width_data_xpu,
                                  offset_xpu,
                                  new_offset_xpu,
-                                 batch_data,
+                                 batch_gate,
                                  batch_data);
     CHECK_EQ(ret, 0);
   } else {

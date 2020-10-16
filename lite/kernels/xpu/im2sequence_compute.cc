@@ -49,9 +49,8 @@ void Im2SequenceCompute::Run() {
       Im2SeqOutputSize(height, kernel_h, pad_h, pad_h, stride_h);
   int output_width = Im2SeqOutputSize(width, kernel_w, pad_w, pad_w, stride_w);
 
-  std::vector<uint64_t> out_offset;
-  out_offset.push_back(0);
-  out_offset.push_back(output_height * output_width);
+  std::vector<uint64_t> im_offset;
+  im_offset.push_back(0);
 
   XPUScratchPadGuard xpu_x_nhwc_guard_ = TargetWrapperXPU::MallocScratchPad(
       param.X->numel() * sizeof(float), false /*use_l3 */);
@@ -88,12 +87,14 @@ void Im2SequenceCompute::Run() {
       param.Out->mutable_data<float>(TARGET(kXPU)),
       {batch, output_height * output_width, kernel_h * kernel_w, channel},
       {0, 1, 3, 2});
-
   CHECK_EQ(r, 0);
 
+  for (int im_id = 0; im_id < batch; im_id++) {
+    im_offset.push_back(uint64_t((im_id + 1) * output_height * output_width));
+  }
   auto lod = param.Out->mutable_lod();
   lod->resize(1);
-  (*lod)[0] = out_offset;
+  (*lod)[0] = im_offset;
 }
 
 }  // namespace xpu
