@@ -81,6 +81,11 @@ void CastCompute::Run() {
     auto* in_data = param.X->data<float>();
     auto* out_data = out->mutable_data<int>(TARGET(kXPU));
     r = xdnn::cast<float, int>(ctx.GetRawContext(), in_data, out_data, numel);
+  } else if (in_dtype == 3 && out_dtype == 2) {
+    // int64_t -> int
+    auto* in_data = param.X->data<int64_t>();
+    auto* out_data = out->mutable_data<int>(TARGET(kXPU));
+    r = xdnn::cast<int64_t, int>(ctx.GetRawContext(), in_data, out_data, numel);
   } else {
     CHECK(false);
   }

@@ -29,7 +29,7 @@ void BatchNormCompute::Run() {
   auto& x_dims = param.x->dims();
 
   int n, c, h, w;
-  CHECK(x_dims.size() == 2 || x_dims.size() == 4);
+  CHECK(x_dims.size() == 2 || x_dims.size() == 4 || x_dims.size() == 3);
   if (x_dims.size() == 4) {
     n = x_dims[0];
     c = x_dims[1];
@@ -39,6 +39,11 @@ void BatchNormCompute::Run() {
     n = x_dims[0];
     c = x_dims[1];
     h = 1;
+    w = 1;
+  } else {
+    n = x_dims[0];
+    c = x_dims[1];
+    h = x_dims[2];
     w = 1;
   }
 

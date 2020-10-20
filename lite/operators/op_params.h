@@ -602,6 +602,14 @@ struct DropoutParam : ParamBase {
   std::string dropout_implementation{"downgrade_in_infer"};
 };
 
+// For PadConstantLike op
+struct PadConstantLikeParam : ParamBase {
+  const lite::Tensor* x{};
+  const lite::Tensor* y{};
+  lite::Tensor* output{};
+  float pad_value{0.0f};
+};
+
 // For Split op
 struct SplitParam : ParamBase {
   lite::Tensor* x{};

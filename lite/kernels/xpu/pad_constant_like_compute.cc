@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lite/kernels/xpu/softmax_compute.h"
-#include <vector>
+#include "lite/kernels/xpu/pad_constant_like_compute.h"
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
 
@@ -22,21 +21,38 @@ namespace lite {
 namespace kernels {
 namespace xpu {
 
-void SoftmaxCompute::Run() {
+union TypeUnion {
+  float fp32;
+  int32_t int32;
+};
+
+void PadConstantLikeCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
+  auto x_dims = param.x->dims();
+  auto y_dims = param.y->dims();
+  float* out = param.output->mutable_data<float>(TARGET(kXPU));
 
-  std::vector<int> xdims;
-  for (auto i = 0; i < param.x->dims().size(); i++) {
-    xdims.push_back(param.x->dims().data()[i]);
+  TypeUnion value;
+  value.fp32 = param.pad_value;
+
+  if (x_dims.size() == 2 && x_dims[1] == y_dims[1]) {
+    int r = xdnn::memset_4_byte(ctx.GetRawContext(), /* context */
+                                reinterpret_cast<void*>(out),
+                                value.int32,
+                                param.x->numel());
+    CHECK_EQ(r, 0);
+
+    r = xdnn::elementwise_add(ctx.GetRawContext(),    /* context */
+                              param.y->data<float>(), /* x */
+                              out,                    /* y */
+                              out,
+                              param.y->numel());
+
+    CHECK_EQ(r, 0);
+  } else {
+    LOG(FATAL) << "Unsupport shape";
   }
-  int axis = param.axis < 0 ? param.axis + xdims.size() : param.axis;
-  int r = xdnn::softmax(ctx.GetRawContext(),    /* context */
-                        param.x->data<float>(), /* x */
-                        param.output->mutable_data<float>(TARGET(kXPU)), /* y */
-                        xdims,
-                        axis);
-  CHECK_EQ(r, 0);
 }
 
 }  // namespace xpu
@@ -44,12 +60,13 @@ void SoftmaxCompute::Run() {
 }  // namespace lite
 }  // namespace paddle
 
-REGISTER_LITE_KERNEL(softmax,
+REGISTER_LITE_KERNEL(pad_constant_like,
                      kXPU,
                      kFloat,
                      kNCHW,
-                     paddle::lite::kernels::xpu::SoftmaxCompute,
+                     paddle::lite::kernels::xpu::PadConstantLikeCompute,
                      def)
     .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("Y", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
