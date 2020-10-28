@@ -256,12 +256,13 @@ class LITE_API CxxConfig : public ConfigBase {
 
   // XPU only, set the size of the workspace memory from L3 cache for the
   // current thread.
-  void set_xpu_workspace_l3_size_per_thread(int l3_size = 0xfffc00);
+  void set_xpu_workspace_l3_size_per_thread(int l3_size = 0);
   // XPU only, specify the target device ID for the current thread.
   // **DEPRECATED**, use xpu_set_device() at the very beginning of each worker
   // thread
   void set_xpu_dev_per_thread(int dev_no = 0);
   void set_xpu_multi_encoder_precision(const std::string& precision = "int16");
+  void set_xpu_conv_autotune(bool autotune = true);
 };
 
 /// MobileConfig is the config for the light weight predictor, it will skip

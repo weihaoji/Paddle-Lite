@@ -74,13 +74,31 @@ class TargetWrapper<TARGET(kXPU)> {
     if (tls_raw_ctx_ == nullptr) {
       tls_raw_ctx_ = xdnn::create_context();
       CHECK(tls_raw_ctx_);
-      int r = xdnn::set_workspace_l3_size(tls_raw_ctx_,
-                                          workspace_l3_size_per_thread);
-      if (r != 0) {
-        LOG(WARNING) << "xdnn::set_workspace_l3_size() failed, r = " << r
-                     << ", workspace_l3_size_per_thread = "
-                     << workspace_l3_size_per_thread;
+      if (workspace_l3_size_per_thread) {
+        void* xpu_l3_ptr = nullptr;
+        XPU_CALL(xpu_malloc(reinterpret_cast<void**>(&xpu_l3_ptr),
+                            workspace_l3_size_per_thread,
+                            XPU_MEM_L3));
+        if (xpu_l3_ptr != nullptr) {
+          tls_raw_ctx_->_l3_mgr.set(xpu_l3_ptr, workspace_l3_size_per_thread);
+        } else {
+          LOG(WARNING) << "XPU L3 Cache Malloc Fail, Set L3 WorkSpace as 0";
+        }
       }
+
+      if (set_xpu_auto_tune) {
+        tls_raw_ctx_->_xpu1_conv_selector.set_autotune_loop(true);
+        tls_raw_ctx_->_xpu1_conv_selector.set_inference_mode(true);
+      }
+
+      // int r = xdnn::set_workspace_l3_size(tls_raw_ctx_,
+      //                                    workspace_l3_size_per_thread);
+
+      // if (r != 0) {
+      //  LOG(WARNING) << "xdnn::set_workspace_l3_size() failed, r = " << r
+      //               << ", workspace_l3_size_per_thread = "
+      //               << workspace_l3_size_per_thread;
+      //}
     }
     return tls_raw_ctx_;
   }
@@ -98,6 +116,7 @@ class TargetWrapper<TARGET(kXPU)> {
 
   static std::string multi_encoder_precision;  // NOLINT
   static int workspace_l3_size_per_thread;
+  static bool set_xpu_auto_tune;
 
  private:
   static LITE_THREAD_LOCAL xdnn::Context* tls_raw_ctx_;

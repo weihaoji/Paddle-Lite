@@ -334,6 +334,16 @@ void CxxConfig::set_xpu_multi_encoder_precision(const std::string &precision) {
 #endif
 }
 
+void CxxConfig::set_xpu_conv_autotune(bool autotune) {
+#ifdef LITE_WITH_XPU
+  lite::TargetWrapperXPU::set_xpu_auto_tune = autotune;
+#else
+  LOG(WARNING) << "The invoking of the function "
+                  "'set_xpu_conv_autotune' is ignored, please "
+                  "rebuild it with LITE_WITH_XPU=ON.";
+#endif
+}
+
 // set model data in combined format, `set_model_from_file` refers to loading
 // model from file, set_model_from_buffer refers to loading model from memory
 // buffer
