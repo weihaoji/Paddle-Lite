@@ -299,14 +299,14 @@ void GruCompute::Run() {
 }  // namespace lite
 }  // namespace paddle
 
-REGISTER_LITE_KERNEL(
-    gru, kXPU, kFloat, kNCHW, paddle::lite::kernels::xpu::GruCompute, def)
-    .BindInput("Input", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindInput("H0", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindInput("Weight", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindInput("Bias", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindOutput("BatchGate", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindOutput("BatchResetHiddenPrev", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindOutput("BatchHidden", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindOutput("Hidden", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .Finalize();
+// REGISTER_LITE_KERNEL(
+//    gru, kXPU, kFloat, kNCHW, paddle::lite::kernels::xpu::GruCompute, def)
+//    .BindInput("Input", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindInput("H0", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindInput("Weight", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindInput("Bias", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindOutput("BatchGate", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindOutput("BatchResetHiddenPrev", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindOutput("BatchHidden", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .BindOutput("Hidden", {LiteType::GetTensorTy(TARGET(kXPU))})
+//    .Finalize();

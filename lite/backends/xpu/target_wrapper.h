@@ -106,11 +106,10 @@ class TargetWrapper<TARGET(kXPU)> {
   // **DEPRECATED**, use xpu_set_device() at the very beginning of each worker
   // thread
   static void SetDev(int dev_no = 0) {
-    const char* dev_env = getenv("LITE_XPU_DEV");
+    const char* dev_env = std::getenv("LITE_XPU_DEV");
     if (dev_env) {
       dev_no = atoi(dev_env);
     }
-
     XPU_CALL(xpu_set_device(dev_no));
   }
 
