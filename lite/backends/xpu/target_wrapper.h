@@ -89,6 +89,10 @@ class TargetWrapper<TARGET(kXPU)> {
       if (set_xpu_auto_tune) {
         tls_raw_ctx_->_xpu1_conv_selector.set_autotune_loop(true);
         tls_raw_ctx_->_xpu1_conv_selector.set_inference_mode(true);
+        const char* autotune_file = std::getenv("XPU_AUTOTUNE_FILE");
+        if (autotune_file) {
+          tls_raw_ctx_->_xpu1_conv_selector.set_autotune_file(autotune_file);
+        }
       }
 
       // int r = xdnn::set_workspace_l3_size(tls_raw_ctx_,
