@@ -216,6 +216,12 @@ class XPUConv2dBlock0Fuser : public FuseBase {
     int mean_len = mean_t->numel();
     int filter_len = filter_t->numel();
     int filter_stride = filter_len / mean_len;
+    auto& f_dims = filter_t->dims();
+    std::vector<int> filter_dims{static_cast<int>(f_dims[0]),
+                                 static_cast<int>(f_dims[1]),
+                                 static_cast<int>(f_dims[2]),
+                                 static_cast<int>(f_dims[3])};
+    op_desc.SetAttr<std::vector<int>>("filter_dims", filter_dims);
 
     float* filter_on_host = filter_t->mutable_data<float>();
     float* scale_on_host = scale_t->mutable_data<float>();
@@ -281,21 +287,22 @@ class XPUConv2dBlock0Fuser : public FuseBase {
                                        {"hard_sigmoid", 15}};
 
     std::string output_name = "";
+    float act_param_ = 0.0f;
     if (with_act_) {
       if (act_type_ == "leaky_relu") {
         auto act_op_desc = *matched.at("act")->stmt()->op_info();
-        float alpha = act_op_desc.GetAttr<float>("alpha");
-        op_desc.SetAttr("leaky_relu_alpha", alpha);
+        act_param_ = act_op_desc.GetAttr<float>("alpha");
       } else if (act_type_ == "hard_sigmoid") {
         auto act_op_desc = *matched.at("act")->stmt()->op_info();
-        float slope = act_op_desc.GetAttr<float>("slope");
-        op_desc.SetAttr("hard_sigmoid_slope", slope);
+        act_param_ = act_op_desc.GetAttr<float>("slope");
       }
       output_name = matched.at("act_out")->arg()->name;
-      op_desc.SetAttr("act_type", act_map[act_type_]);
+      op_desc.SetAttr<int>("act_type", act_map[act_type_]);
     } else {
       output_name = matched.at("bn_out")->arg()->name;
+      op_desc.SetAttr<int>("act_type", 0);
     }
+    op_desc.SetAttr<float>("act_param", act_param_);
     op_desc.SetOutput("Output", {output_name});
 
     // add new arg output_max
@@ -432,7 +439,12 @@ class XPUConv2dBlock1Fuser : public FuseBase {
     int mean_len = mean_t->numel();
     int filter_len = filter_t->numel();
     int filter_stride = filter_len / mean_len;
-
+    auto& f_dims = filter_t->dims();
+    std::vector<int> filter_dims{static_cast<int>(f_dims[0]),
+                                 static_cast<int>(f_dims[1]),
+                                 static_cast<int>(f_dims[2]),
+                                 static_cast<int>(f_dims[3])};
+    op_desc.SetAttr<std::vector<int>>("filter_dims", filter_dims);
     float* filter_on_host = filter_t->mutable_data<float>();
     float* scale_on_host = scale_t->mutable_data<float>();
     float* bias_on_host = bias_t->mutable_data<float>();
@@ -498,17 +510,17 @@ class XPUConv2dBlock1Fuser : public FuseBase {
                                        {"hard_sigmoid", 15}};
 
     std::string output_name = "";
+    float act_param_ = 0.0f;
     if (act_type_ == "leaky_relu") {
       auto act_op_desc = *matched.at("act")->stmt()->op_info();
-      float alpha = act_op_desc.GetAttr<float>("alpha");
-      op_desc.SetAttr("leaky_relu_alpha", alpha);
+      act_param_ = act_op_desc.GetAttr<float>("alpha");
     } else if (act_type_ == "hard_sigmoid") {
       auto act_op_desc = *matched.at("act")->stmt()->op_info();
-      float slope = act_op_desc.GetAttr<float>("slope");
-      op_desc.SetAttr("hard_sigmoid_slope", slope);
+      act_param_ = act_op_desc.GetAttr<float>("slope");
     }
+    op_desc.SetAttr<float>("act_param", act_param_);
     output_name = matched.at("act_out")->arg()->name;
-    op_desc.SetAttr("act_type", act_map[act_type_]);
+    op_desc.SetAttr<int>("act_type", act_map[act_type_]);
     op_desc.SetOutput("Output", {output_name});
 
     // add new arg output_max
@@ -596,6 +608,13 @@ class XPUConv2dBlock2Fuser : public FuseBase {
 
     auto* filter_t = scope->FindMutableTensor(filter_name);
     int filter_len = filter_t->numel();
+
+    auto& f_dims = filter_t->dims();
+    std::vector<int> filter_dims{static_cast<int>(f_dims[0]),
+                                 static_cast<int>(f_dims[1]),
+                                 static_cast<int>(f_dims[2]),
+                                 static_cast<int>(f_dims[3])};
+    op_desc.SetAttr<std::vector<int>>("filter_dims", filter_dims);
     float* filter_on_host = filter_t->mutable_data<float>();
 
     // Perform preprocess
@@ -644,22 +663,23 @@ class XPUConv2dBlock2Fuser : public FuseBase {
                                        {"hard_sigmoid", 15}};
 
     std::string output_name = "";
+    float act_param_ = 0.0f;
     if (with_act_) {
       if (act_type_ == "leaky_relu") {
         auto act_op_desc = *matched.at("act")->stmt()->op_info();
-        float alpha = act_op_desc.GetAttr<float>("alpha");
-        op_desc.SetAttr("leaky_relu_alpha", alpha);
+        act_param_ = act_op_desc.GetAttr<float>("alpha");
       } else if (act_type_ == "hard_sigmoid") {
         auto act_op_desc = *matched.at("act")->stmt()->op_info();
-        float slope = act_op_desc.GetAttr<float>("slope");
-        op_desc.SetAttr("hard_sigmoid_slope", slope);
+        act_param_ = act_op_desc.GetAttr<float>("slope");
       }
       output_name = matched.at("act_out")->arg()->name;
-      op_desc.SetAttr("act_type", act_map[act_type_]);
+      op_desc.SetAttr<int>("act_type", act_map[act_type_]);
     } else {
-      op_desc.SetAttr("act_type", 0);
+      op_desc.SetAttr<int>("act_type", 0);
       output_name = matched.at("add_out")->arg()->name;
     }
+
+    op_desc.SetAttr<float>("act_param", act_param_);
     op_desc.SetOutput("Output", {output_name});
 
     // add new arg output_max

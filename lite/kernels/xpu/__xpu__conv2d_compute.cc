@@ -27,8 +27,9 @@ void XPUConv2dCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
+  // attr
   auto& input_dims = param.Input->dims();
-  auto& filter_dims = param.Filter->dims();
+  auto& filter_dims = param.filter_dims;
   int batch = static_cast<int>(input_dims[0]);
   int img_c = static_cast<int>(input_dims[1]);
   int img_h = static_cast<int>(input_dims[2]);
@@ -36,32 +37,27 @@ void XPUConv2dCompute::Run() {
   int filter_num = static_cast<int>(filter_dims[0]);
   int win_h = static_cast<int>(filter_dims[2]);
   int win_w = static_cast<int>(filter_dims[3]);
-
   auto paddings = *param.paddings;
   auto dilations = *param.dilations;
-
-  std::string filter_type = param.filter_type;
   int groups = param.groups;
-  int act_type = (param.act_type == -1) ? 0 : param.act_type;
+  int act_type = param.act_type;
+  // output
+  float* output_max = param.OutputMax->mutable_data<float>(TARGET(kXPU));
+  float* output = param.Output->mutable_data<float>(TARGET(kXPU));
+  // optional input
   const auto* bias = param.Bias ? param.Bias->data<float>() : nullptr;
   const auto* branch = param.Branch ? param.Branch->data<float>() : nullptr;
   const float* input_max =
       param.InputMax ? param.InputMax->data<float>() : nullptr;
-  float* output_max = param.OutputMax
-                          ? param.OutputMax->mutable_data<float>(TARGET(kXPU))
-                          : nullptr;
-  float* output = param.Output->mutable_data<float>(TARGET(kXPU));
-
-  // TODO(luohang): now support for resnet50 first
-  CHECK_EQ(filter_type, "int16");
+  // act
   xdnn::Activation_t act((xdnn::Activation_t::act_enum)act_type);
   if (act_type == 5) {
-    act.leaky_alpha = param.leaky_relu_alpha;
+    act.leaky_alpha = param.act_param;
     CHECK(act.leaky_alpha >= 0.0001 && act.leaky_alpha <= 10);
   } else if (act_type == 15) {
-    act.hard_sigmoid_slope = param.hard_sigmoid_slope;
+    act.hard_sigmoid_slope = param.act_param;
   }
-
+  // kernel
   int r = xdnn::conv2d_fusion<float, int16_t, float, int16_t>(
       ctx.GetRawContext(),           /* context */
       param.Input->data<float>(),    /* input bottom */
