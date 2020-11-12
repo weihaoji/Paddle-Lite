@@ -86,6 +86,7 @@ void XPUResNet50Compute::Run() {
       arg_max_filter_,
       nullptr,
       arg_bias_,
+      {nullptr, nullptr, nullptr, nullptr},
       true);
 
   CHECK_EQ(r, 0);

@@ -60,6 +60,7 @@ else()
 
   # extra(fused kernel)
   add_kernel(__xpu__resnet50_compute_xpu XPU extra SRCS __xpu__resnet50_compute.cc DEPS ${lite_kernel_deps})
+  add_kernel(__xpu__block_fuse_compute XPU extra SRCS __xpu__block_fuse_compute.cc DEPS ${lite_kernel_deps})
   add_kernel(__xpu__resnet_cbam_compute_xpu XPU extra SRCS __xpu__resnet_cbam_compute.cc DEPS ${lite_kernel_deps})
   add_kernel(__xpu__multi_encoder_compute_xpu XPU extra SRCS __xpu__multi_encoder_compute.cc DEPS ${lite_kernel_deps})
   add_kernel(__xpu__embedding_with_eltwise_add_compute_xpu XPU extra SRCS __xpu__embedding_with_eltwise_add_compute.cc DEPS ${lite_kernel_deps})

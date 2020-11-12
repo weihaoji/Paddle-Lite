@@ -93,7 +93,8 @@ void Pool2DCompute::Run() {
     } else {
       // handle max pool error
       if (param.ksize[0] == 3 && param.ksize[1] == 3 && param.strides[0] == 2 &&
-          param.strides[1] == 1 && paddings[0] == 1 && paddings[1] == 1) {
+          (param.strides[1] == 1 || param.strides[1] == 2) &&
+          paddings[0] == 1 && paddings[1] == 1) {
         float* y_xpu = param.output->mutable_data<float>(TARGET(kXPU));
 
         float* y_cpu = reinterpret_cast<float*>(

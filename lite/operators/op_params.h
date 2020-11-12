@@ -1716,6 +1716,34 @@ struct CtcAlignParam : ParamBase {
   int padding_value{0};
 };
 
+struct XPUBlockFuseParam : ParamBase {
+  lite::Tensor* input{};
+  lite::Tensor* output{};
+  lite::Tensor* output_max{};
+  std::vector<lite::Tensor*> filter;
+  std::vector<lite::Tensor*> max_filter;
+  // optional input
+  std::vector<lite::Tensor*> bias;
+  lite::Tensor* input_max{};
+  // optional output
+  std::vector<lite::Tensor*> block_output;
+  // Attr
+  std::vector<int> op_type;
+  std::vector<int> place_x;
+  std::vector<int> place_y;
+  std::vector<int> place_z;
+  std::vector<int> has_bias;
+  std::vector<int> filter_dims;
+  std::vector<int> conv_strides;
+  std::vector<int> conv_paddings;
+  std::vector<int> conv_dilations;
+  std::vector<int> conv_groups;
+  std::vector<int> act_type;
+  std::vector<float> act_param;
+  std::vector<int> block_lod;
+  std::vector<int> has_block_output;
+};
+
 struct XPUResNet50Param : ParamBase {
   lite::Tensor* input{};
   std::vector<lite::Tensor*> filter;
