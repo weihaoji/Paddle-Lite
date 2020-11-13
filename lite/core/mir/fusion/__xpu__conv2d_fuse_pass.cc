@@ -179,10 +179,12 @@ class XPUConv2dBlock0Fuser : public FuseBase {
     *bn >> *bn_saved_var;
     *bn >> *bn_var_out;
 
+    PMNode* act = nullptr;
+    PMNode* act_out = nullptr;
     if (with_act_) {
       bn_out->assert_is_op_input(act_type_, "X")->AsIntermediate();
-      auto* act = OpNode("act", act_type_)->AsIntermediate();
-      auto* act_out =
+      act = OpNode("act", act_type_)->AsIntermediate();
+      act_out =
           VarNode("act_out")->assert_is_op_output(act_type_, "Out")->AsOutput();
 
       *bn_out >> *act >> *act_out;
@@ -581,10 +583,12 @@ class XPUConv2dBlock2Fuser : public FuseBase {
     *conv_bias >> *add;
     *conv_filter >> *conv;
 
+    PMNode* act = nullptr;
+    PMNode* act_out = nullptr;
     if (with_act_) {
       add_out->assert_is_op_input(act_type_, "X")->AsIntermediate();
-      auto* act = OpNode("act", act_type_)->AsIntermediate();
-      auto* act_out =
+      act = OpNode("act", act_type_)->AsIntermediate();
+      act_out =
           VarNode("act_out")->assert_is_op_output(act_type_, "Out")->AsOutput();
 
       *add_out >> *act >> *act_out;
@@ -722,7 +726,7 @@ class XPUConv2dFusePass : public ProgramPass {
     // conv + bn + branch + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
       for (auto act_type :
-           {"relu", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
         fusion::XPUConv2dBlock1Fuser fuser(conv_type, act_type);
         fuser(graph.get());
       }
@@ -731,7 +735,7 @@ class XPUConv2dFusePass : public ProgramPass {
     // conv + bn + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
       for (auto act_type :
-           {"relu", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
         fusion::XPUConv2dBlock0Fuser fuser1(
             conv_type, act_type, true /* with_relu */);
         fuser1(graph.get());
@@ -743,7 +747,7 @@ class XPUConv2dFusePass : public ProgramPass {
     // conv + ew_add + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
       for (auto act_type :
-           {"relu", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
         fusion::XPUConv2dBlock2Fuser fuser3(
             conv_type, act_type, true /* with_relu */);
         fuser3(graph.get());
