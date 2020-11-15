@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lite/kernels/xpu/__xpu__block_fuse_compute.h"
+#include "lite/kernels/xpu/__xpu__block_fuse_fp16_compute.h"
 #include <vector>
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
@@ -22,7 +22,7 @@ namespace lite {
 namespace kernels {
 namespace xpu {
 
-void XPUBlockFuseCompute::PrepareForRun() {
+void XPUBlockFuseFp16Compute::PrepareForRun() {
   auto& param = this->Param<param_t>();
   auto op_type = param.op_type;
 
@@ -45,7 +45,7 @@ void XPUBlockFuseCompute::PrepareForRun() {
   int conv_bias_count = 0;
   for (int block_idx = 0; block_idx < block_lod.size(); block_idx++) {
     int cur_block_op_num = block_lod[block_idx];
-    xdnn::fusion_block<float, int16_t, int16_t, float> cur_block;
+    xdnn::fusion_block<float, int16_t, int16_t, float16> cur_block;
     for (int op_idx = 0; op_idx < cur_block_op_num; op_idx++) {
       xdnn::Activation_t act((xdnn::Activation_t::act_enum)act_type[op_count]);
       if (act_type[op_count] == 5) {
@@ -101,7 +101,7 @@ void XPUBlockFuseCompute::PrepareForRun() {
   }
 }
 
-void XPUBlockFuseCompute::Run() {
+void XPUBlockFuseFp16Compute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
 
@@ -139,7 +139,7 @@ void XPUBlockFuseCompute::Run() {
       param.input_max ? param.input_max->data<float>() : nullptr;
   float* output_max = param.output_max->mutable_data<float>(TARGET(kXPU));
 
-  int r = xdnn::run_fusion_block_list<float, int16_t, int16_t, float>(
+  int r = xdnn::run_fusion_block_list<float, int16_t, int16_t, float16>(
       ctx.GetRawContext(),
       param.input->data<float>(),
       output->mutable_data<float>(TARGET(kXPU)),
@@ -162,9 +162,9 @@ void XPUBlockFuseCompute::Run() {
 
 REGISTER_LITE_KERNEL(__xpu__block_fuse_op,
                      kXPU,
-                     kFloat,
+                     kInt16,
                      kNCHW,
-                     paddle::lite::kernels::xpu::XPUBlockFuseCompute,
+                     paddle::lite::kernels::xpu::XPUBlockFuseFp16Compute,
                      def)
     .BindInput("Input", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("Filter", {LiteType::GetTensorTy(TARGET(kXPU))})
