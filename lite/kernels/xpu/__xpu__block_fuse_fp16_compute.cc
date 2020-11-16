@@ -122,14 +122,16 @@ void XPUBlockFuseFp16Compute::Run() {
     int r = xpu_fusion_block[block_idx].infer_shape(
         n, cur_block_c, cur_block_h, cur_block_w, &f, &yh, &yw);
     CHECK_EQ(r, 0);
-    if (has_block_output[block_idx]) {
-      param.block_output[feature_list_count]->Resize({n, f, yh, yw});
-      feature_list.push_back(
-          param.block_output[feature_list_count]->mutable_data<float>(
-              TARGET(kXPU)));
-      feature_list_count += 1;
-    } else {
-      feature_list.push_back(nullptr);
+    if (block_idx != xpu_fusion_block.size() - 1) {
+      if (has_block_output[block_idx]) {
+        param.block_output[feature_list_count]->Resize({n, f, yh, yw});
+        feature_list.push_back(
+            param.block_output[feature_list_count]->mutable_data<float>(
+                TARGET(kXPU)));
+        feature_list_count += 1;
+      } else {
+        feature_list.push_back(nullptr);
+      }
     }
   }
   CHECK_EQ(feature_list_count, param.block_output.size());

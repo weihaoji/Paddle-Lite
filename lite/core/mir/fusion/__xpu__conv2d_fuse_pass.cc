@@ -286,7 +286,8 @@ class XPUConv2dBlock0Fuser : public FuseBase {
                                        {"tanh", 3},
                                        {"leaky_relu", 5},
                                        {"hard_swish", 14},
-                                       {"hard_sigmoid", 15}};
+                                       {"hard_sigmoid", 15},
+                                       {"relu6", 17}};
 
     std::string output_name = "";
     float act_param_ = 0.0f;
@@ -509,7 +510,8 @@ class XPUConv2dBlock1Fuser : public FuseBase {
                                        {"tanh", 3},
                                        {"leaky_relu", 5},
                                        {"hard_swish", 14},
-                                       {"hard_sigmoid", 15}};
+                                       {"hard_sigmoid", 15},
+                                       {"relu6", 17}};
 
     std::string output_name = "";
     float act_param_ = 0.0f;
@@ -664,7 +666,8 @@ class XPUConv2dBlock2Fuser : public FuseBase {
                                        {"tanh", 3},
                                        {"leaky_relu", 5},
                                        {"hard_swish", 14},
-                                       {"hard_sigmoid", 15}};
+                                       {"hard_sigmoid", 15},
+                                       {"relu6", 17}};
 
     std::string output_name = "";
     float act_param_ = 0.0f;
@@ -725,8 +728,12 @@ class XPUConv2dFusePass : public ProgramPass {
 
     // conv + bn + branch + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
-      for (auto act_type :
-           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+      for (auto act_type : {"relu",
+                            "sigmoid",
+                            "leaky_relu",
+                            "hard_swish",
+                            "hard_sigmoid",
+                            "relu6"}) {
         fusion::XPUConv2dBlock1Fuser fuser(conv_type, act_type);
         fuser(graph.get());
       }
@@ -734,8 +741,12 @@ class XPUConv2dFusePass : public ProgramPass {
 
     // conv + bn + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
-      for (auto act_type :
-           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+      for (auto act_type : {"relu",
+                            "sigmoid",
+                            "leaky_relu",
+                            "hard_swish",
+                            "hard_sigmoid",
+                            "relu6"}) {
         fusion::XPUConv2dBlock0Fuser fuser1(
             conv_type, act_type, true /* with_relu */);
         fuser1(graph.get());
@@ -746,8 +757,12 @@ class XPUConv2dFusePass : public ProgramPass {
     }
     // conv + ew_add + act
     for (auto conv_type : {"conv2d", "depthwise_conv2d"}) {
-      for (auto act_type :
-           {"relu", "sigmoid", "leaky_relu", "hard_swish", "hard_sigmoid"}) {
+      for (auto act_type : {"relu",
+                            "sigmoid",
+                            "leaky_relu",
+                            "hard_swish",
+                            "hard_sigmoid",
+                            "relu6"}) {
         fusion::XPUConv2dBlock2Fuser fuser3(
             conv_type, act_type, true /* with_relu */);
         fuser3(graph.get());

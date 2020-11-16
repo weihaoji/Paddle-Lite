@@ -32,6 +32,17 @@ void ReluCompute::Run() {
   CHECK_EQ(r, 0);
 }
 
+void Relu6Compute::Run() {
+  auto& param = this->Param<param_t>();
+  auto& ctx = this->ctx_->As<XPUContext>();
+
+  int r = xdnn::relu6(ctx.GetRawContext(),    /* context */
+                      param.X->data<float>(), /* x */
+                      param.Out->mutable_data<float>(TARGET(kXPU)), /* y */
+                      param.X->numel());                            /* len */
+  CHECK_EQ(r, 0);
+}
+
 void TanhCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
@@ -275,6 +286,12 @@ REGISTER_LITE_KERNEL(leaky_relu,
                      kNCHW,
                      paddle::lite::kernels::xpu::LeakyReluCompute,
                      def)
+    .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(
+    relu6, kXPU, kFloat, kNCHW, paddle::lite::kernels::xpu::Relu6Compute, def)
     .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
