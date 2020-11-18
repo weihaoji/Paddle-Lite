@@ -101,11 +101,19 @@ void BilinearInterpCompute::Run() {
   float scale = param.scale;
   int out_w = param.out_w;
   int out_h = param.out_h;
-  // int align_mode = param.align_mode;
+  int align_mode = param.align_mode;
   // required attributes
   bool align_corners = param.align_corners;
   PrepareLayout(X, OutSize, SizeTensor, Scale, Out, scale, &out_h, &out_w);
 
+  int trans_mode = -1;
+  if (align_corners == true) {
+    trans_mode = 0;
+  } else if ((align_corners == false) && (align_mode == 0)) {
+    trans_mode = 1;
+  } else {
+    trans_mode = 2;
+  }
   int r = xdnn::interpolate2d<float>(ctx.GetRawContext(), /* context */
                                      X->data<float>(),
                                      Out->mutable_data<float>(TARGET(kXPU)),
@@ -116,7 +124,7 @@ void BilinearInterpCompute::Run() {
                                      out_h,
                                      out_w,
                                      false,
-                                     align_corners,
+                                     trans_mode,
                                      true);
   CHECK_EQ(r, 0);
 }
@@ -143,6 +151,7 @@ void NearestInterpCompute::Run() {
   // required attributes
   bool align_corners = param.align_corners;
   PrepareLayout(X, OutSize, SizeTensor, Scale, Out, scale, &out_h, &out_w);
+  int trans_mode = (align_corners == true) ? 0 : 1;
 
   int r = xdnn::interpolate2d<float>(ctx.GetRawContext(), /* context */
                                      X->data<float>(),
@@ -154,7 +163,7 @@ void NearestInterpCompute::Run() {
                                      out_h,
                                      out_w,
                                      true,
-                                     align_corners,
+                                     trans_mode,
                                      true);
 
   CHECK_EQ(r, 0);

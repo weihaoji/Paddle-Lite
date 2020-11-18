@@ -78,6 +78,8 @@ XPUScratchPadGuard TargetWrapperXPU::MallocScratchPad(size_t size,
 std::string TargetWrapperXPU::multi_encoder_precision;  // NOLINT
 int TargetWrapperXPU::workspace_l3_size_per_thread{0};
 bool TargetWrapperXPU::set_xpu_auto_tune{false};
+int TargetWrapperXPU::xpu_l3_lock_size{-1};
+int TargetWrapperXPU::xpu_l3_lock_fd{-1};
 LITE_THREAD_LOCAL xdnn::Context* TargetWrapperXPU::tls_raw_ctx_{nullptr};
 
 }  // namespace lite

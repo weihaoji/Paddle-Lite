@@ -15,10 +15,10 @@
 #ifdef LITE_WITH_XPU
 #include <fcntl.h>
 #endif
-#include "lite/core/program.h"
 #include <algorithm>
 #include <map>
 #include <set>
+#include "lite/core/program.h"
 #include "lite/model_parser/cpp_desc.h"
 #include "lite/operators/conditional_block_op.h"
 #include "lite/operators/subgraph_op.h"
@@ -265,33 +265,12 @@ RuntimeProgram::RuntimeProgram(
 
 void RuntimeProgram::Run() {
 #ifdef LITE_WITH_XPU
-  // process mutex
-  int xpu_l3_lock_fd;
-  auto need_lock_l3 = std::getenv("XPU_L3_LOCK_REQUIRED");
-  struct flock f_lock;
-  f_lock.l_whence = 0;
-  f_lock.l_len = 0;
-
-  if (need_lock_l3) {
-    const char *s = "/opt/xpu_lock";
-    int pd = -1;
-    XPU_CALL(xpu_current_device(&pd));
-    CHECK(pd > 0) << "Wrong Current XPU Device Num";
-    char *buf = reinterpret_cast<char*>(malloc(strlen(s) + sizeof(pd) + 1));
-
-    xpu_l3_lock_fd = open(buf, O_RDWR);
-    CHECK(xpu_l3_lock_fd > 0) << "open " << buf << " failed " << xpu_l3_lock_fd;
-    free(buf);
-
-    // lock
-    f_lock.l_type = F_WRLCK;
-    fcntl(xpu_l3_lock_fd, F_SETLKW, &f_lock);
-  } else {
-    xpu_l3_lock_fd = -1;
-  }
   // thread mutex
   static std::mutex _mutex_dev;
   std::lock_guard<std::mutex> lock(_mutex_dev);
+
+  //// process mutex
+  lite::TargetWrapperXPU::LockL3Cache();
 #endif
 
 #ifdef LITE_WITH_PRECISION_PROFILE
@@ -343,12 +322,8 @@ void RuntimeProgram::Run() {
             << precision_profiler_summary
             << inst_precision_profiler.GetSummaryTail();
 #endif
-#ifdef PADDLE_WITH_XPU
-  if (need_lock_l3) {
-    f_lock.l_type = F_UNLCK;
-    fcntl(xpu_l3_lock_fd, F_SETLKW, &f_lock);
-    close(xpu_l3_lock_fd);
-  }
+#ifdef LITE_WITH_XPU
+  lite::TargetWrapperXPU::FreeL3Cache();
 #endif
 }
 
