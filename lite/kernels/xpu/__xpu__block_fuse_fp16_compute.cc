@@ -175,4 +175,5 @@ REGISTER_LITE_KERNEL(__xpu__block_fuse_op,
     .BindInput("Bias", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Output", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("OutputMax", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("BlockOutput", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
