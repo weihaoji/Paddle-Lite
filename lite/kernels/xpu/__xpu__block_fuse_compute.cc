@@ -39,6 +39,9 @@ void XPUBlockFuseCompute::PrepareForRun() {
   auto& act_type = param.act_type;
   auto& act_param = param.act_param;
   auto& block_lod = param.block_lod;
+  auto filter_ptr = param.filter->data<int16_t>();
+  auto bias_ptr = param.bias ? param.bias->data<float>() : nullptr;
+  auto max_filter_ptr = param.max_filter->data<float>();
 
   int op_count = 0;
   int conv_count = 0;
@@ -59,8 +62,7 @@ void XPUBlockFuseCompute::PrepareForRun() {
               place_x[op_count],
               place_y[op_count],
               place_z[op_count],
-              reinterpret_cast<const int16_t*>(
-                  param.filter[conv_count]->data<float>()),
+              filter_ptr,
               filter_dims[conv_count * 4 + 1] * conv_groups[conv_count],
               filter_dims[conv_count * 4 + 0],
               {filter_dims[conv_count * 4 + 2],
@@ -74,12 +76,20 @@ void XPUBlockFuseCompute::PrepareForRun() {
               {conv_dilations[conv_count * 2 + 0],
                conv_dilations[conv_count * 2 + 1]},
               conv_groups[conv_count],
-              param.max_filter[conv_count]->data<float>(),
+              max_filter_ptr,
               true,
-              has_bias[conv_count] ? param.bias[conv_bias_count]->data<float>()
-                                   : nullptr,
+              has_bias[conv_count] ? bias_ptr : nullptr,
               act);
           CHECK_EQ(r, 0);
+          filter_ptr = filter_ptr +
+                       filter_dims[conv_count * 4 + 0] *
+                           filter_dims[conv_count * 4 + 1] *
+                           filter_dims[conv_count * 4 + 2] *
+                           filter_dims[conv_count * 4 + 3];
+          max_filter_ptr = max_filter_ptr + 4;
+          bias_ptr = has_bias[conv_count]
+                         ? bias_ptr + filter_dims[conv_count * 4]
+                         : bias_ptr;
           conv_bias_count =
               has_bias[conv_count] ? (conv_bias_count + 1) : conv_bias_count;
           conv_count += 1;

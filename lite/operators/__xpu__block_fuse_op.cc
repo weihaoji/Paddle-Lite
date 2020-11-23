@@ -46,19 +46,10 @@ bool XPUBlockFuseOp::AttachImpl(const cpp::OpDesc& op_desc,
       scope->FindVar(op_desc.Output("Output").front())->GetMutable<Tensor>();
   param_.output_max =
       scope->FindVar(op_desc.Output("OutputMax").front())->GetMutable<Tensor>();
-
-  param_.filter.clear();
-  for (auto& name : op_desc.Input("Filter")) {
-    auto t =
-        const_cast<lite::Tensor*>(&scope->FindVar(name)->Get<lite::Tensor>());
-    param_.filter.push_back(t);
-  }
-  param_.max_filter.clear();
-  for (auto& name : op_desc.Input("FilterMax")) {
-    auto t =
-        const_cast<lite::Tensor*>(&scope->FindVar(name)->Get<lite::Tensor>());
-    param_.max_filter.push_back(t);
-  }
+  param_.filter =
+      scope->FindVar(op_desc.Input("Filter").front())->GetMutable<Tensor>();
+  param_.max_filter =
+      scope->FindVar(op_desc.Input("FilterMax").front())->GetMutable<Tensor>();
 
   param_.op_type = op_desc.GetAttr<std::vector<int>>("OpType");
   param_.place_x = op_desc.GetAttr<std::vector<int>>("PlaceX");
@@ -79,15 +70,14 @@ bool XPUBlockFuseOp::AttachImpl(const cpp::OpDesc& op_desc,
 
   // optional params
   std::vector<std::string> input_arg_names = op_desc.InputArgumentNames();
-  param_.bias.clear();
   if (std::find(input_arg_names.begin(), input_arg_names.end(), "Bias") !=
       input_arg_names.end()) {
-    auto arguments = op_desc.Input("Bias");
-    if (arguments.size() > 0) {
-      for (auto& name : op_desc.Input("Bias")) {
-        auto t = const_cast<lite::Tensor*>(
-            &scope->FindVar(name)->Get<lite::Tensor>());
-        param_.bias.push_back(t);
+    auto bias_arguments = op_desc.Input("Bias");
+    if (bias_arguments.size() > 0) {
+      auto bias_var = scope->FindVar(bias_arguments.front());
+      if (bias_var != nullptr) {
+        param_.bias =
+            const_cast<lite::Tensor*>(&(bias_var->Get<lite::Tensor>()));
       }
     }
   }

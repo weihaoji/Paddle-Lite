@@ -1720,10 +1720,10 @@ struct XPUBlockFuseParam : ParamBase {
   lite::Tensor* input{};
   lite::Tensor* output{};
   lite::Tensor* output_max{};
-  std::vector<lite::Tensor*> filter;
-  std::vector<lite::Tensor*> max_filter;
+  lite::Tensor* filter;
+  lite::Tensor* max_filter;
   // optional input
-  std::vector<lite::Tensor*> bias;
+  lite::Tensor* bias;
   lite::Tensor* input_max{};
   // optional output
   std::vector<lite::Tensor*> block_output;

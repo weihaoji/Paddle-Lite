@@ -33,14 +33,14 @@ class XPUResBlockReductionFuser : public FuseBase {
     auto* left_conv1_weight =
         VarNode("left_conv1_weight")
             ->assert_is_op_input("__xpu__conv2d", "Filter")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv1_weight_max =
         VarNode("left_conv1_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv1_bias = VarNode("left_conv1_bias")
                                 ->assert_is_op_input("__xpu__conv2d", "Bias")
-                                ->AsInput();
+                                ->AsIntermediate();
     auto* left_conv1 = OpNode("left_conv1", "__xpu__conv2d")->AsIntermediate();
 
     auto* left_conv1_out = VarNode("left_conv1_out")
@@ -56,14 +56,14 @@ class XPUResBlockReductionFuser : public FuseBase {
     auto* left_conv2_weight =
         VarNode("left_conv2_weight")
             ->assert_is_op_input("__xpu__conv2d", "Filter")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv2_weight_max =
         VarNode("left_conv2_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv2_bias = VarNode("left_conv2_bias")
                                 ->assert_is_op_input("__xpu__conv2d", "Bias")
-                                ->AsInput();
+                                ->AsIntermediate();
 
     auto* left_conv2 = OpNode("left_conv2", "__xpu__conv2d")->AsIntermediate();
 
@@ -80,14 +80,14 @@ class XPUResBlockReductionFuser : public FuseBase {
     auto* right_conv1_weight =
         VarNode("right_conv1_weight")
             ->assert_is_op_input("__xpu__conv2d", "Filter")
-            ->AsInput();
+            ->AsIntermediate();
     auto* right_conv1_weight_max =
         VarNode("right_conv1_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
-            ->AsInput();
+            ->AsIntermediate();
     auto* right_conv1_bias = VarNode("right_conv1_bias")
                                  ->assert_is_op_input("__xpu__conv2d", "Bias")
-                                 ->AsInput();
+                                 ->AsIntermediate();
     auto* right_conv1 =
         OpNode("right_conv1", "__xpu__conv2d")->AsIntermediate();
 
@@ -104,14 +104,14 @@ class XPUResBlockReductionFuser : public FuseBase {
     auto* left_conv3_weight =
         VarNode("left_conv3_weight")
             ->assert_is_op_input("__xpu__conv2d", "Filter")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv3_weight_max =
         VarNode("left_conv3_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
-            ->AsInput();
+            ->AsIntermediate();
     auto* left_conv3_bias = VarNode("left_conv3_bias")
                                 ->assert_is_op_input("__xpu__conv2d", "Bias")
-                                ->AsInput();
+                                ->AsIntermediate();
     auto* left_conv3 = OpNode("left_conv3", "__xpu__conv2d")->AsIntermediate();
 
     auto* left_conv3_out = VarNode("left_conv3_out")
@@ -179,9 +179,6 @@ class XPUResBlockReductionFuser : public FuseBase {
 
     op_desc.SetType("__xpu__block_fuse_op");
     op_desc.SetInput("Input", {matched.at("input")->arg()->name});
-    op_desc.SetInput("Filter", filter_name);
-    op_desc.SetInput("Bias", bias_name);
-    op_desc.SetInput("FilterMax", filter_max_name);
     op_desc.SetOutput("Output", {matched.at("left_conv3_out")->arg()->name});
     op_desc.SetOutput("OutputMax",
                       {matched.at("left_conv3_out_max")->arg()->name});
@@ -210,6 +207,9 @@ class XPUResBlockReductionFuser : public FuseBase {
     std::vector<int> act_type;
     std::vector<float> act_param;
 
+    std::vector<int> encode_filter_size{0};
+    std::vector<int> encode_bias_size{0};
+    std::vector<int> encode_filter_max_size{0};
     for (auto name : conv_name) {
       auto cur_filter_dims =
           matched.at(name)->stmt()->op_info()->GetAttr<std::vector<int>>(
@@ -229,9 +229,15 @@ class XPUResBlockReductionFuser : public FuseBase {
           matched.at(name)->stmt()->op_info()->GetAttr<int>("act_type");
       auto cur_act_param =
           matched.at(name)->stmt()->op_info()->GetAttr<float>("act_param");
-
       filter_dims.insert(
           filter_dims.end(), cur_filter_dims.begin(), cur_filter_dims.end());
+
+      encode_filter_size.push_back(encode_filter_size.back() +
+                                   cur_filter_dims[0] * cur_filter_dims[1] *
+                                       cur_filter_dims[2] * cur_filter_dims[3]);
+      encode_bias_size.push_back(encode_bias_size.back() + cur_filter_dims[0]);
+      encode_filter_max_size.push_back(encode_filter_max_size.back() + 4);
+
       conv_strides.insert(
           conv_strides.end(), cur_strides.begin(), cur_strides.end());
       if (cur_paddings.size() == 2) {
@@ -269,6 +275,73 @@ class XPUResBlockReductionFuser : public FuseBase {
     op_desc.SetAttr("BlockLod", block_lod);
     op_desc.SetAttr("HasBlockOutput", has_block_output);
 
+    std::unique_ptr<int16_t[]> encode_filter_int16(
+        new int16_t[encode_filter_size.back()]);
+    for (int i = 0; i < filter_name.size(); i++) {
+      auto* filter_t = scope->FindMutableTensor(filter_name[i]);
+      int16_t* filter_on_host = filter_t->mutable_data<int16_t>();
+      memcpy(encode_filter_int16.get() + encode_filter_size[i],
+             filter_on_host,
+             (encode_filter_size[i + 1] - encode_filter_size[i]) *
+                 sizeof(int16_t));
+    }
+    std::string new_filter_name = "block_" + filter_name[0];
+    auto* new_filter_node = graph->NewArgumentNode(new_filter_name);
+    new_filter_node->arg()->is_weight = true;
+    new_filter_node->arg()->type = LiteType::GetTensorTy(
+        TARGET(kHost), PRECISION(kInt16), DATALAYOUT(kNCHW));
+    auto* new_filter_t = scope->NewTensor(new_filter_name);
+    new_filter_t->Resize({encode_filter_size.back()});
+    int16_t* new_filter_ptr = new_filter_t->mutable_data<int16_t>();
+    memcpy(new_filter_ptr,
+           encode_filter_int16.get(),
+           encode_filter_size.back() * sizeof(int16_t));
+    op_desc.SetInput("Filter", {new_filter_name});
+
+    std::unique_ptr<float[]> encode_bias(new float[encode_bias_size.back()]);
+    for (int i = 0; i < bias_name.size(); i++) {
+      auto* bias_t = scope->FindMutableTensor(bias_name[i]);
+      float* bias_on_host = bias_t->mutable_data<float>();
+      memcpy(encode_bias.get() + encode_bias_size[i],
+             bias_on_host,
+             (encode_bias_size[i + 1] - encode_bias_size[i]) * sizeof(float));
+    }
+    std::string new_bias_name = "block_" + bias_name[0];
+    auto* new_bias_node = graph->NewArgumentNode(new_bias_name);
+    new_bias_node->arg()->is_weight = true;
+    new_bias_node->arg()->type = LiteType::GetTensorTy(
+        TARGET(kHost), PRECISION(kFloat), DATALAYOUT(kNCHW));
+    auto* new_bias_t = scope->NewTensor(new_bias_name);
+    new_bias_t->Resize({encode_bias_size.back()});
+    float* new_bias_ptr = new_bias_t->mutable_data<float>();
+    memcpy(new_bias_ptr,
+           encode_bias.get(),
+           encode_bias_size.back() * sizeof(float));
+    op_desc.SetInput("Bias", {new_bias_name});
+
+    std::unique_ptr<float[]> encode_filter_max(
+        new float[encode_filter_max_size.back()]);
+    for (int i = 0; i < filter_max_name.size(); i++) {
+      auto* filter_max_t = scope->FindMutableTensor(filter_max_name[i]);
+      float* filter_max_on_host = filter_max_t->mutable_data<float>();
+      memcpy(encode_filter_max.get() + encode_filter_max_size[i],
+             filter_max_on_host,
+             (encode_filter_max_size[i + 1] - encode_filter_max_size[i]) *
+                 sizeof(float));
+    }
+    std::string new_filter_max_name = "block_" + filter_max_name[0];
+    auto* new_filter_max_node = graph->NewArgumentNode(new_filter_max_name);
+    new_filter_max_node->arg()->is_weight = true;
+    new_filter_max_node->arg()->type = LiteType::GetTensorTy(
+        TARGET(kHost), PRECISION(kFloat), DATALAYOUT(kNCHW));
+    auto* new_filter_max_t = scope->NewTensor(new_filter_max_name);
+    new_filter_max_t->Resize({encode_filter_max_size.back()});
+    float* new_filter_max_ptr = new_filter_max_t->mutable_data<float>();
+    memcpy(new_filter_max_ptr,
+           encode_filter_max.get(),
+           encode_filter_max_size.back() * sizeof(float));
+    op_desc.SetInput("FilterMax", {new_filter_max_name});
+
     auto& valid_places = left_conv1->valid_places();
     auto resblock_reduction_op =
         LiteOpRegistry::Global().Create(op_desc.Type());
@@ -276,24 +349,11 @@ class XPUResBlockReductionFuser : public FuseBase {
     auto* new_op_node =
         graph->GraphCreateInstructNode(resblock_reduction_op, valid_places);
 
-    std::vector<std::string> froms{
-        "input",
-        "left_conv1_weight",
-        "left_conv2_weight",
-        "right_conv1_weight",
-        "left_conv3_weight",
-        "left_conv1_weight_max",
-        "left_conv2_weight_max",
-        "right_conv1_weight_max",
-        "left_conv3_weight_max",
-        "left_conv1_bias",
-        "left_conv2_bias",
-        "right_conv1_bias",
-        "left_conv3_bias",
-    };
-    for (auto& from : froms) {
-      IR_NODE_LINK_TO(matched.at(from), new_op_node);
-    }
+    IR_NODE_LINK_TO(matched.at("input"), new_op_node);
+    IR_NODE_LINK_TO(new_filter_node, new_op_node);
+    IR_NODE_LINK_TO(new_filter_max_node, new_op_node);
+    IR_NODE_LINK_TO(new_bias_node, new_op_node);
+
     IR_NODE_LINK_TO(new_op_node, matched.at("left_conv3_out"));
     IR_NODE_LINK_TO(new_op_node, matched.at("left_conv3_out_max"));
   }
