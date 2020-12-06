@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "lite/operators/__xpu__multi_encoder_op.h"
+#include <vector>
 #include "lite/core/op_registry.h"
 
 namespace paddle {
@@ -31,8 +32,7 @@ bool XPUMultiEncoderOp::AttachImpl(const cpp::OpDesc& op_desc,
                                    lite::Scope* scope) {
   param_.input = const_cast<lite::Tensor*>(
       &scope->FindVar(op_desc.Input("Input").front())->Get<lite::Tensor>());
-  param_.mask = const_cast<lite::Tensor*>(
-      &scope->FindVar(op_desc.Input("Mask").front())->Get<lite::Tensor>());
+
   param_.fc_weight_max = const_cast<lite::Tensor*>(
       &scope->FindVar(op_desc.Input("FCWeightMax").front())
            ->Get<lite::Tensor>());
@@ -70,6 +70,54 @@ bool XPUMultiEncoderOp::AttachImpl(const cpp::OpDesc& op_desc,
   param_.act_type = op_desc.GetAttr<std::string>("act_type");
   param_.precision = op_desc.GetAttr<std::string>("precision");
   param_.enable_qkv_fusion = op_desc.GetAttr<bool>("enable_qkv_fusion");
+
+  // optional params
+  std::vector<std::string> input_arg_names = op_desc.InputArgumentNames();
+  if (std::find(input_arg_names.begin(), input_arg_names.end(), "Mask") !=
+      input_arg_names.end()) {
+    auto arguments = op_desc.Input("Mask");
+    if (arguments.size() > 0) {
+      auto arg_var = scope->FindVar(arguments.front());
+      if (arg_var != nullptr) {
+        param_.mask =
+            const_cast<lite::Tensor*>(&(arg_var->Get<lite::Tensor>()));
+      }
+    }
+  }
+  if (std::find(input_arg_names.begin(),
+                input_arg_names.end(),
+                "InputMaskLod") != input_arg_names.end()) {
+    auto arguments = op_desc.Input("InputMaskLod");
+    if (arguments.size() > 0) {
+      auto arg_var = scope->FindVar(arguments.front());
+      if (arg_var != nullptr) {
+        param_.mask =
+            const_cast<lite::Tensor*>(&(arg_var->Get<lite::Tensor>()));
+      }
+    }
+  }
+  std::vector<std::string> output_arg_names = op_desc.OutputArgumentNames();
+  if (std::find(output_arg_names.begin(),
+                output_arg_names.end(),
+                "OutputMaskLod") != output_arg_names.end()) {
+    auto args = op_desc.Output("OutputMaskLod");
+    if (args.size() > 0) {
+      auto output_mask_lod_var = scope->FindVar(args.front());
+      if (output_mask_lod_var != nullptr) {
+        param_.OutputMaskLod = output_mask_lod_var->GetMutable<lite::Tensor>();
+      }
+    }
+  }
+  if (op_desc.HasAttr("slice_axes")) {
+    param_.slice_starts = op_desc.GetAttr<std::vector<int>>("slice_axes");
+  }
+  if (op_desc.HasAttr("slice_starts")) {
+    param_.slice_starts = op_desc.GetAttr<std::vector<int>>("slice_starts");
+  }
+  if (op_desc.HasAttr("slice_ends")) {
+    param_.slice_ends = op_desc.GetAttr<std::vector<int>>("slice_ends");
+  }
+
   return true;
 }
 

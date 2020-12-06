@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "lite/operators/__xpu__embedding_with_eltwise_add_op.h"
+#include <vector>
 #include "lite/core/op_registry.h"
 
 namespace paddle {
@@ -65,6 +66,34 @@ bool XPUEmbeddingWithEltwiseAddOp::AttachImpl(const cpp::OpDesc& op_desc,
   }
 
   param_.padding_idx = op_desc.GetAttr<int64_t>("padding_idx");
+  param_.adaptive_seq_len = op_desc.GetAttr<bool>("adaptive_seq_len");
+
+  // optional params
+  std::vector<std::string> input_arg_names = op_desc.InputArgumentNames();
+  if (std::find(input_arg_names.begin(), input_arg_names.end(), "InputMask") !=
+      input_arg_names.end()) {
+    auto input_mask_arguments = op_desc.Input("InputMask");
+    if (input_mask_arguments.size() > 0) {
+      auto input_mask_var = scope->FindVar(input_mask_arguments.front());
+      if (input_mask_var != nullptr) {
+        param_.InputMask =
+            const_cast<lite::Tensor*>(&(input_mask_var->Get<lite::Tensor>()));
+      }
+    }
+  }
+  std::vector<std::string> output_arg_names = op_desc.OutputArgumentNames();
+  if (std::find(output_arg_names.begin(),
+                output_arg_names.end(),
+                "OutputMaskLod") != output_arg_names.end()) {
+    auto args = op_desc.Output("OutputMaskLod");
+    if (args.size() > 0) {
+      auto output_mask_lod_var = scope->FindVar(args.front());
+      if (output_mask_lod_var != nullptr) {
+        param_.OutputMaskLod = output_mask_lod_var->GetMutable<lite::Tensor>();
+      }
+    }
+  }
+
   return true;
 }
 

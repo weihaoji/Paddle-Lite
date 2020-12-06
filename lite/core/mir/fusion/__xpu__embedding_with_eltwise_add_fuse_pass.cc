@@ -122,6 +122,18 @@ class XPUEmbeddingWithEltwiseAddFuser : public FuseBase {
     op_desc.SetAttr<int64_t>(
         "padding_idx", embedding0_op_info->GetAttr<int64_t>("padding_idx"));
 
+    // add new arg to support adaptive seq len
+    auto* scope = matched.at("embedding0")->stmt()->op()->scope();
+    op_desc.SetAttr<bool>("adaptive_seq_len", false);
+    // output_mask_lod
+    std::string output_mask_lod_name =
+        matched.at(output_name)->arg()->name + "_mask_lod";
+    auto* output_mask_lod_node = graph->NewArgumentNode(output_mask_lod_name);
+    output_mask_lod_node->arg()->type = LiteType::GetTensorTy(
+        TARGET(kXPU), PRECISION(kInt32), DATALAYOUT(kNCHW));
+    scope->NewTensor(output_mask_lod_name);
+    op_desc.SetOutput("OutputMaskLod", {output_mask_lod_name});
+
     auto* new_stmt = matched.at("embedding0")->stmt();
     auto new_op = LiteOpRegistry::Global().Create(op_desc.Type());
     new_op->Attach(op_desc, new_stmt->op()->scope());
@@ -137,6 +149,7 @@ class XPUEmbeddingWithEltwiseAddFuser : public FuseBase {
       DirectedLink(matched.at(table_name), matched.at("embedding0"));
     }
     IR_OP_VAR_LINK(matched.at("embedding0"), matched.at(output_name));
+    IR_OP_VAR_LINK(matched.at("embedding0"), output_mask_lod_node);
   }
 
  private:

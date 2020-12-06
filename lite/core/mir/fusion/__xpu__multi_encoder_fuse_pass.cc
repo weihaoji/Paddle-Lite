@@ -711,6 +711,15 @@ class XPUMultiEncoderFuser {
            sizeof(float) * fc_weight_max.size());
     op_desc.SetInput("FCWeightMax", {max_name});
 
+    // add new arg to support adaptive seq len
+    op_desc.SetAttr<bool>("adaptive_seq_len", false);
+    std::string output_mask_lod_name = out_name + "_mask_lod";
+    auto* output_mask_lod_node = graph->NewArgumentNode(output_mask_lod_name);
+    output_mask_lod_node->arg()->type = LiteType::GetTensorTy(
+        TARGET(kXPU), PRECISION(kInt32), DATALAYOUT(kNCHW));
+    scope->NewTensor(output_mask_lod_name);
+    op_desc.SetOutput("OutputMaskLod", {output_mask_lod_name});
+
     auto multi_encoder_op = LiteOpRegistry::Global().Create(op_desc.Type());
     multi_encoder_op->Attach(op_desc, scope);
     multi_encoder_op->SetValidPlaces(multi_encoder_stmt->op()->valid_places());

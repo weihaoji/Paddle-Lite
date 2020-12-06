@@ -111,6 +111,7 @@ REGISTER_LITE_KERNEL(__xpu__multi_encoder,
     .BindInput("LNScale", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("LNBias", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("Mask", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("InputMaskLod", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("FCWeightMax", {LiteType::GetTensorTy(TARGET(kHost))})
     .BindOutput("Output", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();

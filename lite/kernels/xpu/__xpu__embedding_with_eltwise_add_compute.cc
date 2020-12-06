@@ -86,5 +86,7 @@ REGISTER_LITE_KERNEL(
     def)
     .BindInput("Ids", {LiteType::GetTensorTy(TARGET(kXPU), PRECISION(kInt64))})
     .BindInput("Tables", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("InputMask", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Output", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("OutputMaskLod", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
