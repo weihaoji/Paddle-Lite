@@ -730,6 +730,7 @@ struct FillConstantParam : ParamBase {
   float value{0.0f};
   // useless for x86, keep it for compatibility
   bool force_cpu{false};
+  lite::Tensor* in{};
   lite::Tensor* out{};
 };
 

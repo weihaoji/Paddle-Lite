@@ -92,57 +92,59 @@ void Pool2DCompute::Run() {
       CHECK_EQ(r, 0);
     } else {
       // handle max pool error
-      if (param.ksize[0] == 3 && param.ksize[1] == 3 && param.strides[0] == 2 &&
-          (param.strides[1] == 1 || param.strides[1] == 2) &&
-          paddings[0] == 1 && paddings[1] == 1) {
-        float* y_xpu = param.output->mutable_data<float>(TARGET(kXPU));
+      // if (param.ksize[0] == 3 && param.ksize[1] == 3 && param.strides[0] == 2
+      // &&
+      //    (param.strides[1] == 1 || param.strides[1] == 2) &&
+      //    paddings[0] == 1 && paddings[1] == 1) {
+      //  float* y_xpu = param.output->mutable_data<float>(TARGET(kXPU));
 
-        float* y_cpu = reinterpret_cast<float*>(
-            malloc(param.output->numel() * sizeof(float)));
-        float* x_cpu =
-            reinterpret_cast<float*>(malloc(param.x->numel() * sizeof(float)));
-        XPU_CALL(xpu_memcpy(x_cpu,
-                            param.x->data<float>(),
-                            param.x->numel() * sizeof(float),
-                            XPU_DEVICE_TO_HOST));
-        XPU_CALL(xpu_wait());
-        xdnn::Context ctx_cpu(xdnn::kCPU);
-        int r = xdnn::max_pool2d<float>(&ctx_cpu,
-                                        x_cpu,
-                                        y_cpu,
-                                        nullptr,
-                                        x_dims[0],
-                                        x_dims[1],
-                                        x_dims[2],
-                                        x_dims[3],
-                                        param.ksize,
-                                        param.strides,
-                                        paddings,
-                                        true);
-        CHECK_EQ(r, 0);
-        XPU_CALL(xpu_memcpy(y_xpu,
-                            y_cpu,
-                            param.output->numel() * sizeof(float),
-                            XPU_HOST_TO_DEVICE));
-        XPU_CALL(xpu_wait());
-        free(y_cpu);
-        free(x_cpu);
-      } else {
-        int r = xdnn::max_pool2d<float>(
-            ctx.GetRawContext(),                             /* context */
-            param.x->data<float>(),                          /* x */
-            param.output->mutable_data<float>(TARGET(kXPU)), /* y */
-            nullptr,
-            x_dims[0],
-            x_dims[1],
-            x_dims[2],
-            x_dims[3],
-            param.ksize,
-            param.strides,
-            paddings,
-            true);
-        CHECK_EQ(r, 0);
-      }
+      //  float* y_cpu = reinterpret_cast<float*>(
+      //      malloc(param.output->numel() * sizeof(float)));
+      //  float* x_cpu =
+      //      reinterpret_cast<float*>(malloc(param.x->numel() *
+      //      sizeof(float)));
+      //  XPU_CALL(xpu_memcpy(x_cpu,
+      //                      param.x->data<float>(),
+      //                      param.x->numel() * sizeof(float),
+      //                      XPU_DEVICE_TO_HOST));
+      //  XPU_CALL(xpu_wait());
+      //  xdnn::Context ctx_cpu(xdnn::kCPU);
+      //  int r = xdnn::max_pool2d<float>(&ctx_cpu,
+      //                                  x_cpu,
+      //                                  y_cpu,
+      //                                  nullptr,
+      //                                  x_dims[0],
+      //                                  x_dims[1],
+      //                                  x_dims[2],
+      //                                  x_dims[3],
+      //                                  param.ksize,
+      //                                  param.strides,
+      //                                  paddings,
+      //                                  true);
+      //  CHECK_EQ(r, 0);
+      //  XPU_CALL(xpu_memcpy(y_xpu,
+      //                      y_cpu,
+      //                      param.output->numel() * sizeof(float),
+      //                      XPU_HOST_TO_DEVICE));
+      //  XPU_CALL(xpu_wait());
+      //  free(y_cpu);
+      //  free(x_cpu);
+      //} else {
+      int r = xdnn::max_pool2d<float>(
+          ctx.GetRawContext(),                             /* context */
+          param.x->data<float>(),                          /* x */
+          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          nullptr,
+          x_dims[0],
+          x_dims[1],
+          x_dims[2],
+          x_dims[3],
+          param.ksize,
+          param.strides,
+          paddings,
+          true);
+      CHECK_EQ(r, 0);
+      //}
     }
   }
 }
