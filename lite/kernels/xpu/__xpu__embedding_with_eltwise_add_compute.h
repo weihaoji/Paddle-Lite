@@ -37,6 +37,7 @@ class XPUEmbeddingWithEltwiseAddCompute
   std::vector<const float*> arg_tables_;
   XPUScratchPadGuard table_lens_guard_;
   std::vector<int> table_lens_cpu_;
+  XPUScratchPadGuard xpu_ids_guard_;
 };
 
 }  // namespace xpu

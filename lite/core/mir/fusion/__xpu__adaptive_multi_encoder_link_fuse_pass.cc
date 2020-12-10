@@ -26,18 +26,6 @@ namespace fusion {
 class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
  public:
   void BuildPattern() override {
-    // auto* idx = VarNode("ids")
-    //                  ->assert_is_op_input("__xpu__embedding_with_eltwise_add",
-    //                  "Ids");
-
-    // auto* input_mask = VarNode("input_mask")
-    //                  ->assert_is_op_input("__xpu__embedding_with_eltwise_add",
-    //                  "InputMask");
-
-    // auto* tables = VarNode("tables")
-    //                  ->assert_is_op_input("__xpu__embedding_with_eltwise_add",
-    //                  "Tables");
-
     auto* xpu_embedding =
         OpNode("xpu_embedding", "__xpu__embedding_with_eltwise_add");
 
@@ -51,18 +39,6 @@ class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
             ->assert_is_op_output("__xpu__embedding_with_eltwise_add",
                                   "OutputMaskLod");
 
-    // auto* layer_norm_bias = VarNode("layer_norm_bias")
-    //                         ->assert_is_op_input("layer_norm", "Bias");
-
-    // auto* layer_norm_scale = VarNode("layer_norm_scale")
-    //                         ->assert_is_op_input("layer_norm", "Scale");
-
-    // auto* layer_norm_mean = VarNode("layer_norm_mean")
-    //                          ->assert_is_op_output("layer_norm", "Mean");
-
-    // auto* layer_norm_variance = VarNode("layer_norm_variance")
-    //                          ->assert_is_op_output("layer_norm", "Variance");
-
     auto* layer_norm_y =
         VarNode("layer_norm_y")
             ->assert_is_op_output("layer_norm", "Y")
@@ -74,13 +50,7 @@ class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
 
     auto* encoder_out =
         VarNode("encoder_out")
-            ->assert_is_op_output("__xpu__multi_encoder", "Output")
-            ->assert_is_op_input("slice", "Input")
-            ->AsIntermediate();
-
-    // auto* encoder_out_mask_lod = VarNode("encoder_out_mask_lod")
-    //                          ->assert_is_op_output("__xpu__multi_encoder",
-    //                          "OutputMaskLod");
+            ->assert_is_op_output("__xpu__multi_encoder", "Output");
 
     auto* matmul_in = VarNode("matmul_in")
                           ->assert_is_op_input("matmul", "X")
@@ -107,16 +77,13 @@ class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
                         ->assert_is_op_input("__xpu__multi_encoder", "Mask")
                         ->AsIntermediate();
 
-    auto* slice = OpNode("slice", "slice")->AsIntermediate();
-    auto* slice_out = VarNode("slice_out")->assert_is_op_output("slice", "Out");
-
     *matmul_in >> *matmul >> *matmul_out >> *scale >> *scale_out >> *stack >>
         *stack_y >> *xpu_encoder;
 
     *xpu_embedding >> *embedding_out >> *layer_norm >> *layer_norm_y >>
         *xpu_encoder;
 
-    *xpu_encoder >> *encoder_out >> *slice >> *slice_out;
+    *xpu_encoder >> *encoder_out;
 
     *xpu_embedding >> *embedding_mask_lod;
   }
@@ -130,10 +97,6 @@ class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
     auto encoder_op_desc = *encoder_instruct->mutable_op_info();
     auto encoder_op = encoder_instruct->op();
 
-    auto* slice_instruct = matched.at("slice")->stmt();
-    auto slice_op_desc = *slice_instruct->op_info();
-    auto slice_op = slice_instruct->op();
-
     std::string input_mask_name = matched.at("matmul_in")->arg()->name;
     auto* input_mask_node = graph->RetrieveArgument(input_mask_name);
 
@@ -142,37 +105,18 @@ class XPUAdaptiveMultiEncoderLinkFuser : public FuseBase {
     auto* embedding_out_mask_lod_node =
         graph->RetrieveArgument(embedding_out_mask_lod_name);
 
-    std::string slice_out_name = matched.at("slice_out")->arg()->name;
-    auto* slice_out_node = graph->RetrieveArgument(slice_out_name);
-
     if ((input_mask_node != nullptr) &&
-        (embedding_out_mask_lod_node != nullptr) &&
-        (slice_out_node != nullptr)) {
+        (embedding_out_mask_lod_node != nullptr)) {
       embedding_op_desc.SetInput("InputMask", {input_mask_name});
       embedding_op_desc.SetAttr("adaptive_seq_len", true);
       encoder_op_desc.SetInput("InputMaskLod", {embedding_out_mask_lod_name});
       encoder_op_desc.SetAttr("adaptive_seq_len", true);
-      encoder_op_desc.SetOutput("Output", {slice_out_name});
-
-      if (slice_op_desc.HasAttr("axes")) {
-        auto slice_axes = slice_op_desc.GetAttr<std::vector<int>>("axes");
-        encoder_op_desc.SetAttr("slice_axes", slice_axes);
-      }
-      if (slice_op_desc.HasAttr("starts")) {
-        auto slice_starts = slice_op_desc.GetAttr<std::vector<int>>("starts");
-        encoder_op_desc.SetAttr("slice_starts", slice_starts);
-      }
-      if (slice_op_desc.HasAttr("ends")) {
-        auto slice_ends = slice_op_desc.GetAttr<std::vector<int>>("ends");
-        encoder_op_desc.SetAttr("slice_ends", slice_ends);
-      }
 
       embedding_instruct->ResetOp(embedding_op_desc,
                                   embedding_op->valid_places());
       DirectedLink(input_mask_node, matched.at("xpu_embedding"));
       encoder_instruct->ResetOp(encoder_op_desc, encoder_op->valid_places());
       DirectedLink(embedding_out_mask_lod_node, matched.at("xpu_encoder"));
-      DirectedLink(matched.at("xpu_encoder"), matched.at("slice_out"));
     }
   }
 };

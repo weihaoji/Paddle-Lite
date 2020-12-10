@@ -20,11 +20,20 @@ namespace paddle {
 namespace lite {
 namespace operators {
 
-bool XPUMultiEncoderOp::CheckShape() const { return true; }
+bool XPUMultiEncoderOp::CheckShape() const {
+  CHECK_OR_FALSE(param_.input->dims().size() == 3);
+  return true;
+}
 
 bool XPUMultiEncoderOp::InferShapeImpl() const {
   auto input_shape = param_.input->dims();
-  param_.output->Resize(input_shape);
+  if ((param_.slice_starts.size() > 0 && param_.slice_starts[0] == 0) &&
+      (param_.slice_ends.size() > 0 && param_.slice_ends[0] == 1) &&
+      (param_.slice_axes.size() > 0 && param_.slice_axes[0] == 1)) {
+    param_.output->Resize({input_shape[0], 1, input_shape[2]});
+  } else {
+    param_.output->Resize(input_shape);
+  }
   return true;
 }
 
@@ -109,7 +118,7 @@ bool XPUMultiEncoderOp::AttachImpl(const cpp::OpDesc& op_desc,
     }
   }
   if (op_desc.HasAttr("slice_axes")) {
-    param_.slice_starts = op_desc.GetAttr<std::vector<int>>("slice_axes");
+    param_.slice_axes = op_desc.GetAttr<std::vector<int>>("slice_axes");
   }
   if (op_desc.HasAttr("slice_starts")) {
     param_.slice_starts = op_desc.GetAttr<std::vector<int>>("slice_starts");
