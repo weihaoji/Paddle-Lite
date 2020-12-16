@@ -120,6 +120,7 @@ class Optimizer {
          "__xpu__fc_fuse_pass",
          // "__xpu__adaptive_multi_encoder_link_fuse_pass",
          "__xpu__multi_encoder_slice_link_fuse_pass",
+         "__xpu__softmax_topk_fuse_pass",
          "graph_visualize_pass",
          "quantized_op_attributes_inference_pass",  // Only for fully
                                                     // quantized model, infer

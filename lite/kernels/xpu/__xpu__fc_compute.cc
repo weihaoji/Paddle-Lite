@@ -30,10 +30,13 @@ void XPUFcCompute::Run() {
   int m = param.in_mat_dims[0];
   int k = param.in_mat_dims[1];
   int n = param.w->dims()[1];
-  const float* bias = param.bias ? param.bias->data<float>() : nullptr;
-  xdnn::Activation_t act_type = (param.activation_type == "relu")
-                                    ? xdnn::Activation_t::RELU
-                                    : xdnn::Activation_t::LINEAR;
+  const float* bias = nullptr;
+  xdnn::Activation_t act_type = xdnn::Activation_t::LINEAR;
+  if (param.bias == nullptr || param.bias->numel() < 4 * 1024) {
+    bias = param.bias ? param.bias->data<float>() : nullptr;
+    act_type = (param.activation_type == "relu") ? xdnn::Activation_t::RELU
+                                                 : xdnn::Activation_t::LINEAR;
+  }
 
   int r = -1;
   if (param.precision == "int31") {
@@ -71,6 +74,27 @@ void XPUFcCompute::Run() {
         act_type /* act_type */);
   }
   CHECK_EQ(r, 0);
+
+  if (param.bias != nullptr && param.bias->numel() >= 4 * 1024) {
+    int bias_size = param.bias->numel();
+    for (int i = 0; i < param.output->numel(); i += bias_size) {
+      int r = xdnn::add<float>(
+          ctx.GetRawContext(), /* context */
+          param.output->data<float>() + i,
+          param.bias->data<float>(),
+          param.output->mutable_data<float>(TARGET(kXPU)) + i, /* C */
+          bias_size);
+      CHECK_EQ(r, 0);
+    }
+    if (param.activation_type == "relu") {
+      int r = xdnn::relu<float>(
+          ctx.GetRawContext(), /* context */
+          param.output->data<float>(),
+          param.output->mutable_data<float>(TARGET(kXPU)), /* C */
+          param.output->numel());
+      CHECK_EQ(r, 0);
+    }
+  }
 }
 
 }  // namespace xpu
