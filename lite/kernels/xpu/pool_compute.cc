@@ -47,9 +47,9 @@ void Pool2DCompute::Run() {
   if (param.adaptive) {
     if (param.pooling_type == "avg") {
       int r = xdnn::adaptive_avg_pool2d(
-          ctx.GetRawContext(),                             /* context */
-          param.x->data<float>(),                          /* x */
-          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          ctx.GetRawContext(),
+          param.x->data<float>(),
+          param.output->mutable_data<float>(TARGET(kXPU)),
           x_dims[0],
           x_dims[1],
           x_dims[2],
@@ -60,9 +60,9 @@ void Pool2DCompute::Run() {
       CHECK_EQ(r, 0);
     } else {
       int r = xdnn::adaptive_max_pool2d(
-          ctx.GetRawContext(),                             /* context */
-          param.x->data<float>(),                          /* x */
-          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          ctx.GetRawContext(),
+          param.x->data<float>(),
+          param.output->mutable_data<float>(TARGET(kXPU)),
           nullptr,
           x_dims[0],
           x_dims[1],
@@ -75,11 +75,10 @@ void Pool2DCompute::Run() {
     }
   } else {
     if (param.pooling_type == "avg") {
-      bool count_include_pad = param.exclusive ? false : true;
       int r = xdnn::avg_pool2d<float>(
-          ctx.GetRawContext(),                             /* context */
-          param.x->data<float>(),                          /* x */
-          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          ctx.GetRawContext(),
+          param.x->data<float>(),
+          param.output->mutable_data<float>(TARGET(kXPU)),
           x_dims[0],
           x_dims[1],
           x_dims[2],
@@ -87,64 +86,55 @@ void Pool2DCompute::Run() {
           param.ksize,
           param.strides,
           paddings,
-          count_include_pad,
+          !param.exclusive,
           true);
       CHECK_EQ(r, 0);
     } else {
-      // handle max pool error
-      // if (param.ksize[0] == 3 && param.ksize[1] == 3 && param.strides[0] == 2
-      // &&
-      //    (param.strides[1] == 1 || param.strides[1] == 2) &&
-      //    paddings[0] == 1 && paddings[1] == 1) {
-      //  float* y_xpu = param.output->mutable_data<float>(TARGET(kXPU));
-
-      //  float* y_cpu = reinterpret_cast<float*>(
-      //      malloc(param.output->numel() * sizeof(float)));
-      //  float* x_cpu =
-      //      reinterpret_cast<float*>(malloc(param.x->numel() *
-      //      sizeof(float)));
-      //  XPU_CALL(xpu_memcpy(x_cpu,
-      //                      param.x->data<float>(),
-      //                      param.x->numel() * sizeof(float),
-      //                      XPU_DEVICE_TO_HOST));
-      //  XPU_CALL(xpu_wait());
-      //  xdnn::Context ctx_cpu(xdnn::kCPU);
-      //  int r = xdnn::max_pool2d<float>(&ctx_cpu,
-      //                                  x_cpu,
-      //                                  y_cpu,
-      //                                  nullptr,
-      //                                  x_dims[0],
-      //                                  x_dims[1],
-      //                                  x_dims[2],
-      //                                  x_dims[3],
-      //                                  param.ksize,
-      //                                  param.strides,
-      //                                  paddings,
-      //                                  true);
-      //  CHECK_EQ(r, 0);
-      //  XPU_CALL(xpu_memcpy(y_xpu,
-      //                      y_cpu,
-      //                      param.output->numel() * sizeof(float),
-      //                      XPU_HOST_TO_DEVICE));
-      //  XPU_CALL(xpu_wait());
-      //  free(y_cpu);
-      //  free(x_cpu);
-      //} else {
+      const float* xpu_x_padded = nullptr;
+      std::vector<int> xpu_x_padded_dims{static_cast<int>(x_dims[0]),
+                                         static_cast<int>(x_dims[1]),
+                                         static_cast<int>(x_dims[2]),
+                                         static_cast<int>(x_dims[3])};
+      XPUScratchPadGuard xpu_x_padded_guard_;
+      if (paddings[0] == 0 && paddings[1] == 0 && paddings[2] == 0 &&
+          paddings[3] == 0) {
+        xpu_x_padded = param.x->data<float>();
+      } else {
+        std::vector<int> pad_left{0, 0, paddings[0], paddings[2]};
+        std::vector<int> pad_right{0, 0, paddings[1], paddings[3]};
+        xpu_x_padded_dims[2] = xpu_x_padded_dims[2] + paddings[0] + paddings[1];
+        xpu_x_padded_dims[3] = xpu_x_padded_dims[3] + paddings[2] + paddings[3];
+        xpu_x_padded_guard_ = TargetWrapperXPU::MallocScratchPad(
+            sizeof(float) * xpu_x_padded_dims[0] * xpu_x_padded_dims[1] *
+                xpu_x_padded_dims[2] * xpu_x_padded_dims[3],
+            false /* use_l3 */);
+        xpu_x_padded = reinterpret_cast<float*>(xpu_x_padded_guard_->addr_);
+        int r = xdnn::pad<float>(ctx.GetRawContext(),
+                                 param.x->data<float>(),
+                                 const_cast<float*>(xpu_x_padded),
+                                 {static_cast<int>(x_dims[0]),
+                                  static_cast<int>(x_dims[1]),
+                                  static_cast<int>(x_dims[2]),
+                                  static_cast<int>(x_dims[3])},
+                                 pad_left,
+                                 pad_right,
+                                 -9999999.0f);
+        CHECK_EQ(r, 0);
+      }
       int r = xdnn::max_pool2d<float>(
-          ctx.GetRawContext(),                             /* context */
-          param.x->data<float>(),                          /* x */
-          param.output->mutable_data<float>(TARGET(kXPU)), /* y */
+          ctx.GetRawContext(),
+          xpu_x_padded,
+          param.output->mutable_data<float>(TARGET(kXPU)),
           nullptr,
-          x_dims[0],
-          x_dims[1],
-          x_dims[2],
-          x_dims[3],
+          xpu_x_padded_dims[0],
+          xpu_x_padded_dims[1],
+          xpu_x_padded_dims[2],
+          xpu_x_padded_dims[3],
           param.ksize,
           param.strides,
-          paddings,
+          {0, 0, 0, 0},
           true);
       CHECK_EQ(r, 0);
-      //}
     }
   }
 }

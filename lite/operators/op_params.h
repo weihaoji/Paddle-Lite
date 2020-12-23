@@ -1718,31 +1718,26 @@ struct CtcAlignParam : ParamBase {
 };
 
 struct XPUBlockFuseParam : ParamBase {
-  lite::Tensor* input{};
+  const lite::Tensor* input{};
+  const lite::Tensor* filter;
+  const lite::Tensor* max_filter;
+  const lite::Tensor* bias;
+  const lite::Tensor* input_max{};
   lite::Tensor* output{};
   lite::Tensor* output_max{};
-  lite::Tensor* filter;
-  lite::Tensor* max_filter;
-  // optional input
-  lite::Tensor* bias;
-  lite::Tensor* input_max{};
-  // optional output
-  std::vector<lite::Tensor*> block_output;
   // Attr
   std::vector<int> op_type;
   std::vector<int> place_x;
   std::vector<int> place_y;
   std::vector<int> place_z;
-  std::vector<int> has_bias;
   std::vector<int> filter_dims;
-  std::vector<int> conv_strides;
-  std::vector<int> conv_paddings;
-  std::vector<int> conv_dilations;
-  std::vector<int> conv_groups;
+  std::vector<int> strides;
+  std::vector<int> paddings;
+  std::vector<int> dilations;
+  std::vector<int> groups;
   std::vector<int> act_type;
   std::vector<float> act_param;
   std::vector<int> block_lod;
-  std::vector<int> has_block_output;
 };
 
 struct XPUResNet50Param : ParamBase {
@@ -1935,6 +1930,7 @@ struct XPUConv2dParam : ParamBase {
   std::shared_ptr<std::vector<int>> paddings;
   std::shared_ptr<std::vector<int>> dilations;
   int groups{1};
+  bool has_branch{false};
 };
 
 struct XPUSfaHeadParam : ParamBase {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 PaddlePaddle Authors. All Rights Reserved.
+// Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "lite/kernels/xpu/__xpu__block_fuse_compute.h"
-#include <vector>
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
 
@@ -22,109 +21,159 @@ namespace lite {
 namespace kernels {
 namespace xpu {
 
-void XPUBlockFuseCompute::PrepareForRun() {
-  auto& param = this->Param<param_t>();
+template <typename T, PrecisionType PType>
+void XPUBlockFuseCompute<T, PType>::PrepareForRun() {
+  auto& param = this->template Param<param_t>();
   auto op_type = param.op_type;
 
   auto place_x = param.place_x;
   auto place_y = param.place_y;
   auto place_z = param.place_z;
 
-  auto& has_bias = param.has_bias;
   auto& filter_dims = param.filter_dims;
-  auto& conv_strides = param.conv_strides;
-  auto& conv_paddings = param.conv_paddings;
-  auto& conv_dilations = param.conv_dilations;
-  auto& conv_groups = param.conv_groups;
+  auto& strides = param.strides;
+  auto& paddings = param.paddings;
+  auto& dilations = param.dilations;
+  auto& groups = param.groups;
   auto& act_type = param.act_type;
   auto& act_param = param.act_param;
   auto& block_lod = param.block_lod;
-  auto filter_ptr = param.filter->data<int16_t>();
-  auto bias_ptr = param.bias ? param.bias->data<float>() : nullptr;
-  auto max_filter_ptr = param.max_filter->data<float>();
+  auto filter_ptr = param.filter->template data<int16_t>();
+  auto bias_ptr = param.bias ? param.bias->template data<float>() : nullptr;
+  auto max_filter_ptr = param.max_filter->template data<float>();
 
   int op_count = 0;
-  int conv_count = 0;
-  int conv_bias_count = 0;
+  int f_count = 0, s_count = 0, p_count = 0, d_count = 0, g_count = 0;
+  int act_count = 0;
   for (int block_idx = 0; block_idx < block_lod.size(); block_idx++) {
     int cur_block_op_num = block_lod[block_idx];
-    xdnn::fusion_block<float, int16_t, int16_t, float> cur_block;
+    xdnn::fusion_block<float, int16_t, int16_t, T> cur_block;
     for (int op_idx = 0; op_idx < cur_block_op_num; op_idx++) {
-      xdnn::Activation_t act((xdnn::Activation_t::act_enum)act_type[op_count]);
-      if (act_type[op_count] == 5) {
-        act.leaky_alpha = act_param[op_count];
-      } else if (act_type[op_count] == 15) {
-        act.hard_sigmoid_slope = act_param[op_count];
-      }
-      switch (op_type[op_idx]) {
+      switch (op_type[op_count]) {
         case 0: {
+          xdnn::Activation_t act(
+              (xdnn::Activation_t::act_enum)act_type[act_count]);
+          if (act_type[act_count] == 5) {
+            act.leaky_alpha = act_param[act_count];
+          } else if (act_type[act_count] == 15) {
+            act.hard_sigmoid_slope = act_param[act_count];
+          }
           int r = cur_block.add_conv_layer(
               place_x[op_count],
               place_y[op_count],
               place_z[op_count],
               filter_ptr,
-              filter_dims[conv_count * 4 + 1] * conv_groups[conv_count],
-              filter_dims[conv_count * 4 + 0],
-              {filter_dims[conv_count * 4 + 2],
-               filter_dims[conv_count * 4 + 3]},
-              {conv_strides[conv_count * 2 + 0],
-               conv_strides[conv_count * 2 + 1]},
-              {conv_paddings[conv_count * 4 + 0],
-               conv_paddings[conv_count * 4 + 1],
-               conv_paddings[conv_count * 4 + 2],
-               conv_paddings[conv_count * 4 + 3]},
-              {conv_dilations[conv_count * 2 + 0],
-               conv_dilations[conv_count * 2 + 1]},
-              conv_groups[conv_count],
+              filter_dims[f_count + 1] * groups[g_count],
+              filter_dims[f_count],
+              {filter_dims[f_count + 2], filter_dims[f_count + 3]},
+              {strides[s_count], strides[s_count + 1]},
+              {paddings[p_count],
+               paddings[p_count + 1],
+               paddings[p_count + 2],
+               paddings[p_count + 3]},
+              {dilations[d_count], dilations[d_count + 1]},
+              groups[g_count],
               max_filter_ptr,
               true,
-              has_bias[conv_count] ? bias_ptr : nullptr,
+              bias_ptr,
               act);
           CHECK_EQ(r, 0);
           filter_ptr = filter_ptr +
-                       filter_dims[conv_count * 4 + 0] *
-                           filter_dims[conv_count * 4 + 1] *
-                           filter_dims[conv_count * 4 + 2] *
-                           filter_dims[conv_count * 4 + 3];
+                       filter_dims[f_count] * filter_dims[f_count + 1] *
+                           filter_dims[f_count + 2] * filter_dims[f_count + 3];
           max_filter_ptr = max_filter_ptr + 4;
-          bias_ptr = has_bias[conv_count]
-                         ? bias_ptr + filter_dims[conv_count * 4]
-                         : bias_ptr;
-          conv_bias_count =
-              has_bias[conv_count] ? (conv_bias_count + 1) : conv_bias_count;
-          conv_count += 1;
+          bias_ptr = bias_ptr + filter_dims[f_count];
+          f_count += 4;
+          s_count += 2;
+          g_count += 1;
+          p_count += 4;
+          d_count += 2;
           op_count += 1;
+          act_count += 1;
           break;
         }
         case 1: {
-          // ew_add
-          int r = cur_block.add_ew_layer(
-              place_x[op_count], place_y[op_count], place_z[op_count], act);
+          int r = cur_block.add_avg_pool2d_layer(
+              place_x[op_count],
+              place_z[op_count],
+              {filter_dims[f_count], filter_dims[f_count + 1]},
+              {strides[s_count], strides[s_count + 1]},
+              {paddings[p_count],
+               paddings[p_count + 1],
+               paddings[p_count + 2],
+               paddings[p_count + 3]},
+              true,
+              true);
+          CHECK_EQ(r, 0);
+          f_count += 2;
+          s_count += 2;
+          p_count += 4;
+          op_count += 1;
+          break;
+        }
+        case 2: {
+          int r = cur_block.add_avg_pool2d_layer(
+              place_x[op_count],
+              place_z[op_count],
+              {filter_dims[f_count], filter_dims[f_count + 1]},
+              {strides[s_count], strides[s_count + 1]},
+              {paddings[p_count],
+               paddings[p_count + 1],
+               paddings[p_count + 2],
+               paddings[p_count + 3]},
+              false,
+              true);
+          CHECK_EQ(r, 0);
+          f_count += 2;
+          s_count += 2;
+          p_count += 4;
+          op_count += 1;
+          break;
+        }
+        case 3: {
+          int r = cur_block.add_max_pool2d_layer(
+              place_x[op_count],
+              place_z[op_count],
+              {filter_dims[f_count], filter_dims[f_count + 1]},
+              {strides[s_count], strides[s_count + 1]},
+              {paddings[p_count],
+               paddings[p_count + 1],
+               paddings[p_count + 2],
+               paddings[p_count + 3]},
+              true);
+          CHECK_EQ(r, 0);
+          f_count += 2;
+          s_count += 2;
+          p_count += 4;
+          op_count += 1;
+          break;
+        }
+        case 20: {
+          int r = cur_block.add_concat_layer(
+              place_x[op_count], place_y[op_count], place_z[op_count], 1);
           CHECK_EQ(r, 0);
           op_count += 1;
           break;
         }
-        default: { break; }
+        default: { LOG(FATAL) << "Unsupport layer type" << op_type[op_count]; }
       }
     }
     xpu_fusion_block.push_back(cur_block);
   }
 }
 
-void XPUBlockFuseCompute::Run() {
-  auto& param = this->Param<param_t>();
-  auto& ctx = this->ctx_->As<XPUContext>();
-
+template <typename T, PrecisionType PType>
+void XPUBlockFuseCompute<T, PType>::Run() {
+  auto& param = this->template Param<param_t>();
+  auto& ctx = this->ctx_->template As<XPUContext>();
   auto& input_dims = param.input->dims();
   int n = static_cast<int>(input_dims[0]);
   int c = static_cast<int>(input_dims[1]);
   int h = static_cast<int>(input_dims[2]);
   int w = static_cast<int>(input_dims[3]);
-  auto& has_block_output = param.has_block_output;
 
-  std::vector<float*> feature_list;
+  std::vector<float*> feature_list(xpu_fusion_block.size() - 1, nullptr);
   int f = c, yh = h, yw = w;
-  int feature_list_count = 0;
   for (int block_idx = 0; block_idx < xpu_fusion_block.size(); block_idx++) {
     int cur_block_c = f;
     int cur_block_h = yh;
@@ -132,29 +181,18 @@ void XPUBlockFuseCompute::Run() {
     int r = xpu_fusion_block[block_idx].infer_shape(
         n, cur_block_c, cur_block_h, cur_block_w, &f, &yh, &yw);
     CHECK_EQ(r, 0);
-    if (block_idx != xpu_fusion_block.size() - 1) {
-      if (has_block_output[block_idx]) {
-        param.block_output[feature_list_count]->Resize({n, f, yh, yw});
-        feature_list.push_back(
-            param.block_output[feature_list_count]->mutable_data<float>(
-                TARGET(kXPU)));
-        feature_list_count += 1;
-      } else {
-        feature_list.push_back(nullptr);
-      }
-    }
   }
-  CHECK_EQ(feature_list_count, param.block_output.size());
   auto output = param.output;
   output->Resize({n, f, yh, yw});
   const float* input_max =
-      param.input_max ? param.input_max->data<float>() : nullptr;
-  float* output_max = param.output_max->mutable_data<float>(TARGET(kXPU));
+      param.input_max ? (param.input_max->template data<float>()) : nullptr;
+  float* output_max =
+      param.output_max->template mutable_data<float>(TARGET(kXPU));
 
-  int r = xdnn::run_fusion_block_list<float, int16_t, int16_t, float>(
+  int r = xdnn::run_fusion_block_list<float, int16_t, int16_t, T>(
       ctx.GetRawContext(),
-      param.input->data<float>(),
-      output->mutable_data<float>(TARGET(kXPU)),
+      param.input->template data<float>(),
+      output->template mutable_data<float>(TARGET(kXPU)),
       input_max,
       output_max,
       n,
@@ -172,12 +210,13 @@ void XPUBlockFuseCompute::Run() {
 }  // namespace lite
 }  // namespace paddle
 
-REGISTER_LITE_KERNEL(__xpu__block_fuse_op,
-                     kXPU,
-                     kFloat,
-                     kNCHW,
-                     paddle::lite::kernels::xpu::XPUBlockFuseCompute,
-                     def)
+namespace xpu = paddle::lite::kernels::xpu;
+using XPUBlockFp32 = xpu::XPUBlockFuseCompute<float, PRECISION(kFloat)>;
+
+using XPUBlockFp16 = xpu::XPUBlockFuseCompute<float16, PRECISION(kFP16)>;
+
+REGISTER_LITE_KERNEL(
+    __xpu__block_fuse_op, kXPU, kFloat, kNCHW, XPUBlockFp32, def)
     .BindInput("Input", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("Filter", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindInput("InputMax", {LiteType::GetTensorTy(TARGET(kXPU))})
@@ -185,5 +224,15 @@ REGISTER_LITE_KERNEL(__xpu__block_fuse_op,
     .BindInput("Bias", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("Output", {LiteType::GetTensorTy(TARGET(kXPU))})
     .BindOutput("OutputMax", {LiteType::GetTensorTy(TARGET(kXPU))})
-    .BindOutput("BlockOutput", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .Finalize();
+
+REGISTER_LITE_KERNEL(
+    __xpu__block_fuse_op, kXPU, kFP16, kNCHW, XPUBlockFp16, def)
+    .BindInput("Input", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("Filter", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("InputMax", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("FilterMax", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("Bias", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("Output", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindOutput("OutputMax", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 PaddlePaddle Authors. All Rights Reserved.
+// Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,123 +23,191 @@ namespace lite {
 namespace mir {
 namespace fusion {
 
+/* fuse 2 or 3xpu_conv2d op as resnet50-like block */
+/* graph[1]: has_mid_conv = true                   */
+/*                in_Input                         */
+/*                /      \                         */
+/*              /          \                       */
+/*             |            |                      */
+/*         xpu_conv2d       |                      */
+/*             |            |                      */
+/*             |            |                      */
+/*         xpu_conv2d       |                      */
+/*             |            |                      */
+/*              \          /                       */
+/*                \       /                        */
+/*                xpu_conv2d                       */
+/*               (with branch)                     */
+/*                    |                            */
+/*                    |                            */
+/*                out_Output                       */
+/*-------------------------------------------------*/
+/* graph[2]: has_mid_conv = false                  */
+/*                in_Input                         */
+/*                /      \                         */
+/*              /          \                       */
+/*             |            |                      */
+/*             |            |                      */
+/*             |            |                      */
+/*         xpu_conv2d       |                      */
+/*             |            |                      */
+/*              \          /                       */
+/*                \       /                        */
+/*                xpu_conv2d                       */
+/*               (with branch)                     */
+/*                    |                            */
+/*                    |                            */
+/*                out_Output                       */
+/*-------------------------------------------------*/
+/* After the pass is applied:                      */
+/*                     in_Input                    */
+/*        in_Filter      |     in_FilterMax        */
+/*                  \    |    /                    */
+/*                   \   |   /                     */
+/*     in_Bias ------- __xpu__block_fuse           */
+/*                       |    \                    */
+/*                       |     \                   */
+/*                       |      out_OutputMax      */
+/*                 out_Output                      */
+/*                                                 */
+
 class XPUResBlockNormalFuser : public FuseBase {
  public:
+  explicit XPUResBlockNormalFuser(bool has_mid_conv) {
+    has_mid_conv_ = has_mid_conv;
+  }
   void BuildPattern() override {
     auto* input = VarNode("input")
                       ->assert_is_op_input("__xpu__conv2d", "Input")
                       ->assert_is_op_input("__xpu__conv2d", "Branch")
                       ->AsInput();
-
     auto* left_conv1_weight =
         VarNode("left_conv1_weight")
             ->assert_is_op_input("__xpu__conv2d", "Filter")
+            ->assert_is_persistable_var()
             ->AsIntermediate();
     auto* left_conv1_weight_max =
         VarNode("left_conv1_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
+            ->assert_is_persistable_var()
             ->AsIntermediate();
     auto* left_conv1_bias = VarNode("left_conv1_bias")
                                 ->assert_is_op_input("__xpu__conv2d", "Bias")
+                                ->assert_is_persistable_var()
                                 ->AsIntermediate();
-    auto* left_conv1 = OpNode("left_conv1", "__xpu__conv2d")->AsIntermediate();
-
+    auto* left_conv1 = OpNode("left_conv1", "__xpu__conv2d")
+                           ->assert_op_attr<bool>("has_branch", false)
+                           ->AsIntermediate();
     auto* left_conv1_out = VarNode("left_conv1_out")
                                ->assert_is_op_output("__xpu__conv2d", "Output")
                                ->assert_is_op_input("__xpu__conv2d", "Input")
                                ->AsIntermediate();
-
     auto* left_conv1_out_max =
         VarNode("left_conv1_out_max")
             ->assert_is_op_output("__xpu__conv2d", "OutputMax")
             ->AsIntermediate();
-
-    auto* left_conv2_weight =
-        VarNode("left_conv2_weight")
-            ->assert_is_op_input("__xpu__conv2d", "Filter")
-            ->AsIntermediate();
-    auto* left_conv2_weight_max =
-        VarNode("left_conv2_weight_max")
-            ->assert_is_op_input("__xpu__conv2d", "FilterMax")
-            ->AsIntermediate();
-    auto* left_conv2_bias = VarNode("left_conv2_bias")
-                                ->assert_is_op_input("__xpu__conv2d", "Bias")
-                                ->AsIntermediate();
-
-    auto* left_conv2 = OpNode("left_conv2", "__xpu__conv2d")->AsIntermediate();
-
-    auto* left_conv2_out = VarNode("left_conv2_out")
-                               ->assert_is_op_output("__xpu__conv2d", "Output")
-                               ->assert_is_op_input("__xpu__conv2d", "Input")
-                               ->AsIntermediate();
-
-    auto* left_conv2_out_max =
-        VarNode("left_conv2_out_max")
-            ->assert_is_op_output("__xpu__conv2d", "OutputMax")
-            ->AsIntermediate();
-
+    PMNode* left_conv2_weight = nullptr;
+    PMNode* left_conv2_weight_max = nullptr;
+    PMNode* left_conv2_bias = nullptr;
+    PMNode* left_conv2 = nullptr;
+    PMNode* left_conv2_out = nullptr;
+    PMNode* left_conv2_out_max = nullptr;
+    if (has_mid_conv_) {
+      left_conv2_weight = VarNode("left_conv2_weight")
+                              ->assert_is_op_input("__xpu__conv2d", "Filter")
+                              ->assert_is_persistable_var()
+                              ->AsIntermediate();
+      left_conv2_weight_max =
+          VarNode("left_conv2_weight_max")
+              ->assert_is_op_input("__xpu__conv2d", "FilterMax")
+              ->assert_is_persistable_var()
+              ->AsIntermediate();
+      left_conv2_bias = VarNode("left_conv2_bias")
+                            ->assert_is_op_input("__xpu__conv2d", "Bias")
+                            ->assert_is_persistable_var()
+                            ->AsIntermediate();
+      left_conv2 = OpNode("left_conv2", "__xpu__conv2d")
+                       ->assert_op_attr<bool>("has_branch", false)
+                       ->AsIntermediate();
+      left_conv2_out = VarNode("left_conv2_out")
+                           ->assert_is_op_output("__xpu__conv2d", "Output")
+                           ->assert_is_op_input("__xpu__conv2d", "Input")
+                           ->AsIntermediate();
+      left_conv2_out_max =
+          VarNode("left_conv2_out_max")
+              ->assert_is_op_output("__xpu__conv2d", "OutputMax")
+              ->AsIntermediate();
+    }
     auto* left_conv3_weight =
         VarNode("left_conv3_weight")
+            ->assert_is_persistable_var()
             ->assert_is_op_input("__xpu__conv2d", "Filter")
             ->AsIntermediate();
     auto* left_conv3_weight_max =
         VarNode("left_conv3_weight_max")
             ->assert_is_op_input("__xpu__conv2d", "FilterMax")
+            ->assert_is_persistable_var()
             ->AsIntermediate();
     auto* left_conv3_bias = VarNode("left_conv3_bias")
                                 ->assert_is_op_input("__xpu__conv2d", "Bias")
+                                ->assert_is_persistable_var()
                                 ->AsIntermediate();
-    auto* left_conv3 = OpNode("left_conv3", "__xpu__conv2d")->AsIntermediate();
-
+    auto* left_conv3 = OpNode("left_conv3", "__xpu__conv2d")
+                           ->assert_op_attr<bool>("has_branch", true)
+                           ->AsIntermediate();
     auto* left_conv3_out = VarNode("left_conv3_out")
                                ->assert_is_op_output("__xpu__conv2d", "Output")
                                ->AsOutput();
-
     auto* left_conv3_out_max =
         VarNode("left_conv3_out_max")
             ->assert_is_op_output("__xpu__conv2d", "OutputMax")
             ->AsOutput();
 
-    *input >> *left_conv1 >> *left_conv1_out >> *left_conv2 >>
-        *left_conv2_out >> *left_conv3;
-    *input >> *left_conv3;
-    *left_conv3 >> *left_conv3_out;
-
+    if (has_mid_conv_) {
+      *input >> *left_conv1 >> *left_conv1_out >> *left_conv2 >>
+          *left_conv2_out >> *left_conv3;
+      *input >> *left_conv3;
+      *left_conv3 >> *left_conv3_out;
+      *left_conv2_weight >> *left_conv2;
+      *left_conv2_weight_max >> *left_conv2;
+      *left_conv2_bias >> *left_conv2;
+      *left_conv2 >> *left_conv2_out_max;
+    } else {
+      *input >> *left_conv1 >> *left_conv1_out >> *left_conv3;
+      *input >> *left_conv3;
+      *left_conv3 >> *left_conv3_out;
+    }
     *left_conv1_weight >> *left_conv1;
     *left_conv1_weight_max >> *left_conv1;
     *left_conv1_bias >> *left_conv1;
     *left_conv1 >> *left_conv1_out_max;
-
-    *left_conv2_weight >> *left_conv2;
-    *left_conv2_weight_max >> *left_conv2;
-    *left_conv2_bias >> *left_conv2;
-    *left_conv2 >> *left_conv2_out_max;
-
     *left_conv3_weight >> *left_conv3;
     *left_conv3_weight_max >> *left_conv3;
     *left_conv3_bias >> *left_conv3;
     *left_conv3 >> *left_conv3_out_max;
   }
   void InsertNewNode(SSAGraph* graph, const key2nodes_t& matched) override {
-    std::vector<std::string> conv_name{
-        "left_conv1", "left_conv2", "left_conv3"};
-
+    std::vector<std::string> conv_name{"left_conv1", "left_conv3"};
     std::vector<std::string> filter_name{
         matched.at("left_conv1_weight")->arg()->name,
-        matched.at("left_conv2_weight")->arg()->name,
         matched.at("left_conv3_weight")->arg()->name};
-
     std::vector<std::string> bias_name = {
         matched.at("left_conv1_bias")->arg()->name,
-        matched.at("left_conv2_bias")->arg()->name,
         matched.at("left_conv3_bias")->arg()->name};
-
     std::vector<std::string> filter_max_name{
         matched.at("left_conv1_weight_max")->arg()->name,
-        matched.at("left_conv2_weight_max")->arg()->name,
         matched.at("left_conv3_weight_max")->arg()->name};
+    if (has_mid_conv_) {
+      conv_name.insert(conv_name.begin() + 1, "left_conv2");
+      filter_name.insert(filter_name.begin() + 1,
+                         matched.at("left_conv2_weight")->arg()->name);
+      bias_name.insert(bias_name.begin() + 1,
+                       matched.at("left_conv2_bias")->arg()->name);
+      filter_max_name.insert(filter_max_name.begin() + 1,
+                             matched.at("left_conv2_weight_max")->arg()->name);
+    }
 
-    auto op_desc = *matched.at("left_conv1")->stmt()->op_info();
+    cpp::OpDesc op_desc;
     auto left_conv1 = matched.at("left_conv1")->stmt()->op();
     auto* scope = left_conv1->scope();
 
@@ -152,22 +220,24 @@ class XPUResBlockNormalFuser : public FuseBase {
     op_desc.SetOutput("OutputMax",
                       {matched.at("left_conv3_out_max")->arg()->name});
 
-    static const int PX = 0;
-    static const int P1 = 1;
-    static const int P2 = 2;
-    // static const int P3 = 3;
-    // static const int P4 = 4;
-    static const int PNONE = 9;
-    static const int PY = 10;
-
-    std::vector<int> op_type{0, 0, 0};
-    std::vector<int> place_x{PX, P1, P2};
-    std::vector<int> place_y{PNONE, PNONE, PX};
-    std::vector<int> place_z{P1, P2, PY};
-    std::vector<int> block_lod{3};
-    std::vector<int> has_block_output{0};
-    std::vector<int> has_bias{1, 1, 1};
-
+    std::vector<int> op_type;
+    std::vector<int> place_x;
+    std::vector<int> place_y;
+    std::vector<int> place_z;
+    std::vector<int> block_lod;
+    if (has_mid_conv_) {
+      op_type = {0, 0, 0};
+      place_x = {0, 1, 2};
+      place_y = {9, 9, 0};
+      place_z = {1, 2, 10};
+      block_lod = {3};
+    } else {
+      op_type = {0, 0};
+      place_x = {0, 1};
+      place_y = {9, 0};
+      place_z = {1, 10};
+      block_lod = {2};
+    }
     std::vector<int> filter_dims;
     std::vector<int> conv_strides;
     std::vector<int> conv_paddings;
@@ -175,7 +245,6 @@ class XPUResBlockNormalFuser : public FuseBase {
     std::vector<int> conv_groups;
     std::vector<int> act_type;
     std::vector<float> act_param;
-
     std::vector<int> encode_filter_size{0};
     std::vector<int> encode_bias_size{0};
     std::vector<int> encode_filter_max_size{0};
@@ -198,16 +267,13 @@ class XPUResBlockNormalFuser : public FuseBase {
           matched.at(name)->stmt()->op_info()->GetAttr<int>("act_type");
       auto cur_act_param =
           matched.at(name)->stmt()->op_info()->GetAttr<float>("act_param");
-
       filter_dims.insert(
           filter_dims.end(), cur_filter_dims.begin(), cur_filter_dims.end());
-
       encode_filter_size.push_back(encode_filter_size.back() +
                                    cur_filter_dims[0] * cur_filter_dims[1] *
                                        cur_filter_dims[2] * cur_filter_dims[3]);
       encode_bias_size.push_back(encode_bias_size.back() + cur_filter_dims[0]);
       encode_filter_max_size.push_back(encode_filter_max_size.back() + 4);
-
       conv_strides.insert(
           conv_strides.end(), cur_strides.begin(), cur_strides.end());
       if (cur_paddings.size() == 2) {
@@ -215,12 +281,10 @@ class XPUResBlockNormalFuser : public FuseBase {
           int copy_pad = *(cur_paddings.begin() + 2 * i);
           cur_paddings.insert(cur_paddings.begin() + 2 * i + 1, copy_pad);
         }
-      } else {
-        if (cur_paddings.size() != 4) {
-          LOG(FATAL)
-              << "Paddings size should be the same or twice as the input size.";
-        }
       }
+      CHECK_EQ(cur_paddings.size(), 4UL)
+          << "Paddings size should be 2 or 4, But received paddings size: "
+          << cur_paddings.size();
       conv_paddings.insert(
           conv_paddings.end(), cur_paddings.begin(), cur_paddings.end());
       conv_dilations.insert(
@@ -229,21 +293,18 @@ class XPUResBlockNormalFuser : public FuseBase {
       act_type.push_back(cur_act_type);
       act_param.push_back(cur_act_param);
     }
-
-    op_desc.SetAttr("OpType", op_type);
-    op_desc.SetAttr("PlaceX", place_x);
-    op_desc.SetAttr("PlaceY", place_y);
-    op_desc.SetAttr("PlaceZ", place_z);
-    op_desc.SetAttr("HasBias", has_bias);
-    op_desc.SetAttr("FilterDims", filter_dims);
-    op_desc.SetAttr("ConvStrides", conv_strides);
-    op_desc.SetAttr("ConvPaddings", conv_paddings);
-    op_desc.SetAttr("ConvDilations", conv_dilations);
-    op_desc.SetAttr("ConvGroups", conv_groups);
-    op_desc.SetAttr("ActType", act_type);
-    op_desc.SetAttr("ActParam", act_param);
-    op_desc.SetAttr("BlockLod", block_lod);
-    op_desc.SetAttr("HasBlockOutput", has_block_output);
+    op_desc.SetAttr("op_type", op_type);
+    op_desc.SetAttr("place_x", place_x);
+    op_desc.SetAttr("place_y", place_y);
+    op_desc.SetAttr("place_z", place_z);
+    op_desc.SetAttr("filter_dims", filter_dims);
+    op_desc.SetAttr("strides", conv_strides);
+    op_desc.SetAttr("paddings", conv_paddings);
+    op_desc.SetAttr("dilations", conv_dilations);
+    op_desc.SetAttr("groups", conv_groups);
+    op_desc.SetAttr("act_type", act_type);
+    op_desc.SetAttr("act_param", act_param);
+    op_desc.SetAttr("block_lod", block_lod);
 
     std::unique_ptr<int16_t[]> encode_filter_int16(
         new int16_t[encode_filter_size.back()]);
@@ -322,10 +383,12 @@ class XPUResBlockNormalFuser : public FuseBase {
     IR_NODE_LINK_TO(new_filter_node, new_op_node);
     IR_NODE_LINK_TO(new_filter_max_node, new_op_node);
     IR_NODE_LINK_TO(new_bias_node, new_op_node);
-
     IR_NODE_LINK_TO(new_op_node, matched.at("left_conv3_out"));
     IR_NODE_LINK_TO(new_op_node, matched.at("left_conv3_out_max"));
   }
+
+ private:
+  bool has_mid_conv_;
 };
 
 }  // namespace fusion
@@ -333,8 +396,10 @@ class XPUResBlockNormalFuser : public FuseBase {
 class XPUResBlockNormalFusePass : public ProgramPass {
  public:
   void Apply(const std::unique_ptr<SSAGraph>& graph) override {
-    fusion::XPUResBlockNormalFuser fuser;
-    fuser(graph.get());
+    fusion::XPUResBlockNormalFuser fuser1(true);
+    fuser1(graph.get());
+    fusion::XPUResBlockNormalFuser fuser2(false);
+    fuser2(graph.get());
   }
 };
 

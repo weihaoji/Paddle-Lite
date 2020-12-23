@@ -1,4 +1,4 @@
-// Copyright (c) 2019 PaddlePaddle Authors. All Rights Reserved.
+// Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,8 @@ bool XPUBlockFuseOp::AttachImpl(const cpp::OpDesc& op_desc,
 
   param_.input =
       scope->FindVar(op_desc.Input("Input").front())->GetMutable<Tensor>();
+  param_.bias =
+      scope->FindVar(op_desc.Input("Bias").front())->GetMutable<Tensor>();
   param_.output =
       scope->FindVar(op_desc.Output("Output").front())->GetMutable<Tensor>();
   param_.output_max =
@@ -51,49 +53,22 @@ bool XPUBlockFuseOp::AttachImpl(const cpp::OpDesc& op_desc,
   param_.max_filter =
       scope->FindVar(op_desc.Input("FilterMax").front())->GetMutable<Tensor>();
 
-  param_.op_type = op_desc.GetAttr<std::vector<int>>("OpType");
-  param_.place_x = op_desc.GetAttr<std::vector<int>>("PlaceX");
-  param_.place_y = op_desc.GetAttr<std::vector<int>>("PlaceY");
-  param_.place_z = op_desc.GetAttr<std::vector<int>>("PlaceZ");
+  param_.op_type = op_desc.GetAttr<std::vector<int>>("op_type");
+  param_.place_x = op_desc.GetAttr<std::vector<int>>("place_x");
+  param_.place_y = op_desc.GetAttr<std::vector<int>>("place_y");
+  param_.place_z = op_desc.GetAttr<std::vector<int>>("place_z");
 
-  param_.has_bias = op_desc.GetAttr<std::vector<int>>("HasBias");
-  param_.filter_dims = op_desc.GetAttr<std::vector<int>>("FilterDims");
-  param_.conv_strides = op_desc.GetAttr<std::vector<int>>("ConvStrides");
-  param_.conv_paddings = op_desc.GetAttr<std::vector<int>>("ConvPaddings");
-  param_.conv_dilations = op_desc.GetAttr<std::vector<int>>("ConvDilations");
-  param_.conv_groups = op_desc.GetAttr<std::vector<int>>("ConvGroups");
+  param_.filter_dims = op_desc.GetAttr<std::vector<int>>("filter_dims");
+  param_.strides = op_desc.GetAttr<std::vector<int>>("strides");
+  param_.paddings = op_desc.GetAttr<std::vector<int>>("paddings");
+  param_.dilations = op_desc.GetAttr<std::vector<int>>("dilations");
+  param_.groups = op_desc.GetAttr<std::vector<int>>("groups");
 
-  param_.act_type = op_desc.GetAttr<std::vector<int>>("ActType");
-  param_.act_param = op_desc.GetAttr<std::vector<float>>("ActParam");
-  param_.block_lod = op_desc.GetAttr<std::vector<int>>("BlockLod");
-  param_.has_block_output = op_desc.GetAttr<std::vector<int>>("HasBlockOutput");
+  param_.act_type = op_desc.GetAttr<std::vector<int>>("act_type");
+  param_.act_param = op_desc.GetAttr<std::vector<float>>("act_param");
+  param_.block_lod = op_desc.GetAttr<std::vector<int>>("block_lod");
 
   // optional params
-  std::vector<std::string> input_arg_names = op_desc.InputArgumentNames();
-  if (std::find(input_arg_names.begin(), input_arg_names.end(), "Bias") !=
-      input_arg_names.end()) {
-    auto bias_arguments = op_desc.Input("Bias");
-    if (bias_arguments.size() > 0) {
-      auto bias_var = scope->FindVar(bias_arguments.front());
-      if (bias_var != nullptr) {
-        param_.bias =
-            const_cast<lite::Tensor*>(&(bias_var->Get<lite::Tensor>()));
-      }
-    }
-  }
-  std::vector<std::string> output_arg_names = op_desc.OutputArgumentNames();
-  param_.block_output.clear();
-  if (std::find(output_arg_names.begin(),
-                output_arg_names.end(),
-                "BlockOutput") != output_arg_names.end()) {
-    auto args = op_desc.Output("BlockOutput");
-    if (!args.empty()) {
-      for (auto var : args) {
-        param_.block_output.push_back(
-            scope->FindVar(var)->GetMutable<lite::Tensor>());
-      }
-    }
-  }
   if (op_desc.HasAttr("has_input_max") &&
       op_desc.GetAttr<bool>("has_input_max")) {
     CHECK(scope->FindVar(op_desc.Input("InputMax").front()));

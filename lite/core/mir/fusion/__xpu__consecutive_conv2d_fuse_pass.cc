@@ -26,21 +26,26 @@ namespace fusion {
 #define STR1(R) #R
 #define STR2(R) STR1(R)
 
-#define CONV_PATTERN(num)                                                   \
-  weight_##num = VarNode(STR2(weight_##num))                                \
-                     ->assert_is_op_input("__xpu__conv2d", "Filter")        \
-                     ->AsIntermediate();                                    \
-  weight_max_##num = VarNode(STR2(weight_max_##num))                        \
-                         ->assert_is_op_input("__xpu__conv2d", "FilterMax") \
-                         ->AsIntermediate();                                \
-  bias_##num = VarNode(STR2(bias_##num))                                    \
-                   ->assert_is_op_input("__xpu__conv2d", "Bias")            \
-                   ->AsIntermediate();                                      \
-  conv_##num = OpNode(STR2(conv_##num), "__xpu__conv2d")->AsIntermediate(); \
-  conv_out_##num = VarNode(STR2(conv_out_##num))                            \
-                       ->assert_is_op_output("__xpu__conv2d", "Output");    \
-  conv_out_max_##num =                                                      \
-      VarNode(STR2(conv_out_max_##num))                                     \
+#define CONV_PATTERN(num)                                                      \
+  auto* weight_##num = VarNode(STR2(weight_##num))                             \
+                           ->assert_is_op_input("__xpu__conv2d", "Filter")     \
+                           ->AsIntermediate();                                 \
+  auto* weight_max_##num =                                                     \
+      VarNode(STR2(weight_max_##num))                                          \
+          ->assert_is_op_input("__xpu__conv2d", "FilterMax")                   \
+          ->AsIntermediate();                                                  \
+  auto* bias_##num = VarNode(STR2(bias_##num))                                 \
+                         ->assert_is_op_input("__xpu__conv2d", "Bias")         \
+                         ->AsIntermediate();                                   \
+  auto* conv_##num =                                                           \
+      OpNode(STR2(conv_##num), "__xpu__conv2d")                                \
+          ->assert_op_attr_satisfied<bool>(                                    \
+              "has_branch", [](const bool& attr) { return attr == false; })    \
+          ->AsIntermediate();                                                  \
+  auto* conv_out_##num = VarNode(STR2(conv_out_##num))                         \
+                             ->assert_is_op_output("__xpu__conv2d", "Output"); \
+  auto* conv_out_max_##num =                                                   \
+      VarNode(STR2(conv_out_max_##num))                                        \
           ->assert_is_op_output("__xpu__conv2d", "OutputMax");
 
 #define CONV_CONNECT(num)           \
@@ -49,212 +54,57 @@ namespace fusion {
   *bias_##num >> *conv_##num;       \
   *conv_##num >> *conv_out_max_##num;
 
-#define NODE_INIT(num)                \
-  PMNode* weight_##num = nullptr;     \
-  PMNode* weight_max_##num = nullptr; \
-  PMNode* bias_##num = nullptr;       \
-  PMNode* conv_##num = nullptr;       \
-  PMNode* conv_out_##num = nullptr;   \
-  PMNode* conv_out_max_##num = nullptr;
-
 class XPUConsecutiveConv2dFuser : public FuseBase {
  public:
-  explicit XPUConsecutiveConv2dFuser(int conv_num) { conv_num_ = conv_num; }
   void BuildPattern() override {
     auto* input = VarNode("input")
                       ->assert_is_op_input("__xpu__conv2d", "Input")
                       ->AsInput();
-    NODE_INIT(0);
-    NODE_INIT(1);
-    NODE_INIT(2);
-    NODE_INIT(3);
-    NODE_INIT(4);
-
     CONV_PATTERN(0);
-    *input >> *conv_0 >> *conv_out_0;
-    if (conv_num_ > 1) {
-      CONV_PATTERN(1);
-      conv_out_0->assert_is_op_input("__xpu__conv2d", "Input")
-          ->AsIntermediate();
-      conv_out_max_0->AsIntermediate();
-      *conv_out_0 >> *conv_1 >> *conv_out_1;
-    }
-    if (conv_num_ > 2) {
-      CONV_PATTERN(2);
-      conv_out_1->assert_is_op_input("__xpu__conv2d", "Input")
-          ->AsIntermediate();
-      conv_out_max_1->AsIntermediate();
-      *conv_out_1 >> *conv_2 >> *conv_out_2;
-    }
-    if (conv_num_ > 3) {
-      CONV_PATTERN(3);
-      *conv_out_2 >> *conv_3 >> *conv_out_3;
-      conv_out_2->assert_is_op_input("__xpu__conv2d", "Input")
-          ->AsIntermediate();
-      conv_out_max_2->AsIntermediate();
-    }
-    if (conv_num_ > 4) {
-      CONV_PATTERN(4);
-      *conv_out_3 >> *conv_4 >> *conv_out_4;
-      conv_out_3->assert_is_op_input("__xpu__conv2d", "Input")
-          ->AsIntermediate();
-      conv_out_max_3->AsIntermediate();
-    }
-    if (conv_num_ == 1) {
-      CONV_CONNECT(0);
-      conv_out_0->AsOutput();
-      conv_out_max_0->AsOutput();
-    } else if (conv_num_ == 2) {
-      CONV_CONNECT(0);
-      CONV_CONNECT(1);
-      conv_out_1->AsOutput();
-      conv_out_max_1->AsOutput();
-    } else if (conv_num_ == 3) {
-      CONV_CONNECT(0);
-      CONV_CONNECT(1);
-      CONV_CONNECT(2);
-      conv_out_2->AsOutput();
-      conv_out_max_2->AsOutput();
-    } else if (conv_num_ == 4) {
-      CONV_CONNECT(0);
-      CONV_CONNECT(1);
-      CONV_CONNECT(2);
-      CONV_CONNECT(3);
-      conv_out_3->AsOutput();
-      conv_out_max_3->AsOutput();
-    } else {
-      CONV_CONNECT(0);
-      CONV_CONNECT(1);
-      CONV_CONNECT(2);
-      CONV_CONNECT(3);
-      CONV_CONNECT(4);
-      conv_out_4->AsOutput();
-      conv_out_max_4->AsOutput();
-    }
+    CONV_PATTERN(1);
+    CONV_PATTERN(2);
+    conv_out_0->assert_is_op_input("__xpu__conv2d", "Input")->AsIntermediate();
+    conv_out_max_0->AsIntermediate();
+    conv_out_1->assert_is_op_input("__xpu__conv2d", "Input")->AsIntermediate();
+    conv_out_max_1->AsIntermediate();
+    conv_out_2->AsOutput();
+    conv_out_max_2->AsOutput();
+    *input >> *conv_0 >> *conv_out_0 >> *conv_1 >> *conv_out_1 >> *conv_2 >>
+        *conv_out_2;
+    CONV_CONNECT(0);
+    CONV_CONNECT(1);
+    CONV_CONNECT(2);
   }
   void InsertNewNode(SSAGraph* graph, const key2nodes_t& matched) override {
-    std::vector<std::string> conv_name{"conv_0"};
-    if (conv_num_ > 1) {
-      conv_name.push_back("conv_1");
+    std::vector<std::string> conv_name;
+    std::vector<std::string> filter_name;
+    std::vector<std::string> bias_name;
+    std::vector<std::string> filter_max_name;
+    for (int i = 0; i < 3; i++) {
+      std::string cur_conv_name = "conv_" + std::to_string(i);
+      std::string cur_weight_name = "weight_" + std::to_string(i);
+      std::string cur_bias_name = "bias_" + std::to_string(i);
+      std::string cur_filter_max_name = "weight_max_" + std::to_string(i);
+      conv_name.push_back(cur_conv_name);
+      filter_name.push_back(matched.at(cur_weight_name)->arg()->name);
+      bias_name.push_back(matched.at(cur_bias_name)->arg()->name);
+      filter_max_name.push_back(matched.at(cur_filter_max_name)->arg()->name);
     }
-    if (conv_num_ > 2) {
-      conv_name.push_back("conv_2");
-    }
-    if (conv_num_ > 3) {
-      conv_name.push_back("conv_3");
-    }
-    if (conv_num_ > 4) {
-      conv_name.push_back("conv_4");
-    }
-
-    std::vector<std::string> filter_name{matched.at("weight_0")->arg()->name};
-    if (conv_num_ > 1) {
-      filter_name.push_back(matched.at("weight_1")->arg()->name);
-    }
-    if (conv_num_ > 2) {
-      filter_name.push_back(matched.at("weight_2")->arg()->name);
-    }
-    if (conv_num_ > 3) {
-      filter_name.push_back(matched.at("weight_3")->arg()->name);
-    }
-    if (conv_num_ > 4) {
-      filter_name.push_back(matched.at("weight_4")->arg()->name);
-    }
-
-    std::vector<std::string> bias_name = {matched.at("bias_0")->arg()->name};
-    if (conv_num_ > 1) {
-      bias_name.push_back(matched.at("bias_1")->arg()->name);
-    }
-    if (conv_num_ > 2) {
-      bias_name.push_back(matched.at("bias_2")->arg()->name);
-    }
-    if (conv_num_ > 3) {
-      bias_name.push_back(matched.at("bias_3")->arg()->name);
-    }
-    if (conv_num_ > 4) {
-      bias_name.push_back(matched.at("bias_4")->arg()->name);
-    }
-
-    std::vector<std::string> filter_max_name{
-        matched.at("weight_max_0")->arg()->name};
-    if (conv_num_ > 1) {
-      filter_max_name.push_back(matched.at("weight_max_1")->arg()->name);
-    }
-    if (conv_num_ > 2) {
-      filter_max_name.push_back(matched.at("weight_max_2")->arg()->name);
-    }
-    if (conv_num_ > 3) {
-      filter_max_name.push_back(matched.at("weight_max_3")->arg()->name);
-    }
-    if (conv_num_ > 4) {
-      filter_max_name.push_back(matched.at("weight_max_4")->arg()->name);
-    }
-
     auto op_desc = *matched.at("conv_0")->stmt()->op_info();
     auto conv_0 = matched.at("conv_0")->stmt()->op();
     auto* scope = conv_0->scope();
-
     op_desc.mutable_inputs()->clear();
     op_desc.mutable_outputs()->clear();
-
     op_desc.SetType("__xpu__block_fuse_op");
     op_desc.SetInput("Input", {matched.at("input")->arg()->name});
-    if (conv_num_ == 1) {
-      op_desc.SetOutput("Output", {matched.at("conv_out_0")->arg()->name});
-      op_desc.SetOutput("OutputMax",
-                        {matched.at("conv_out_max_0")->arg()->name});
-    } else if (conv_num_ == 2) {
-      op_desc.SetOutput("Output", {matched.at("conv_out_1")->arg()->name});
-      op_desc.SetOutput("OutputMax",
-                        {matched.at("conv_out_max_1")->arg()->name});
-    } else if (conv_num_ == 3) {
-      op_desc.SetOutput("Output", {matched.at("conv_out_2")->arg()->name});
-      op_desc.SetOutput("OutputMax",
-                        {matched.at("conv_out_max_2")->arg()->name});
-    } else if (conv_num_ == 4) {
-      op_desc.SetOutput("Output", {matched.at("conv_out_3")->arg()->name});
-      op_desc.SetOutput("OutputMax",
-                        {matched.at("conv_out_max_3")->arg()->name});
-    } else {
-      op_desc.SetOutput("Output", {matched.at("conv_out_4")->arg()->name});
-      op_desc.SetOutput("OutputMax",
-                        {matched.at("conv_out_max_4")->arg()->name});
-    }
+    op_desc.SetOutput("Output", {matched.at("conv_out_2")->arg()->name});
+    op_desc.SetOutput("OutputMax", {matched.at("conv_out_max_2")->arg()->name});
 
-    static const int PX = 0;
-    static const int P1 = 1;
-    static const int P2 = 2;
-    static const int P3 = 3;
-    static const int P4 = 4;
-    static const int PNONE = 9;
-    static const int PY = 10;
-
-    std::vector<int> place_x{PX};
-    std::vector<int> place_z{P1};
-    if (conv_num_ > 1) {
-      place_x.push_back(P1);
-      place_z.push_back(P2);
-    }
-    if (conv_num_ > 2) {
-      place_x.push_back(P2);
-      place_z.push_back(P3);
-    }
-    if (conv_num_ > 3) {
-      place_x.push_back(P3);
-      place_z.push_back(P4);
-    }
-    if (conv_num_ > 4) {
-      place_x.push_back(P4);
-      place_z.push_back(PY);
-    }
-    place_z[conv_num_ - 1] = PY;
-
-    std::vector<int> place_y(conv_num_, PNONE);
-    std::vector<int> block_lod{conv_num_};
-    std::vector<int> has_block_output{0};
-    std::vector<int> has_bias(conv_num_, 1);
-    std::vector<int> op_type(conv_num_, 0);
-
+    std::vector<int> place_x{0, 0, 0};
+    std::vector<int> place_y{9, 9, 9};
+    std::vector<int> place_z{10, 10, 10};
+    std::vector<int> block_lod{1, 1, 1};
+    std::vector<int> op_type(3, 0);
     std::vector<int> filter_dims;
     std::vector<int> conv_strides;
     std::vector<int> conv_paddings;
@@ -262,11 +112,9 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
     std::vector<int> conv_groups;
     std::vector<int> act_type;
     std::vector<float> act_param;
-
     std::vector<int> encode_filter_size{0};
     std::vector<int> encode_bias_size{0};
     std::vector<int> encode_filter_max_size{0};
-
     for (auto name : conv_name) {
       auto cur_filter_dims =
           matched.at(name)->stmt()->op_info()->GetAttr<std::vector<int>>(
@@ -286,7 +134,6 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
           matched.at(name)->stmt()->op_info()->GetAttr<int>("act_type");
       auto cur_act_param =
           matched.at(name)->stmt()->op_info()->GetAttr<float>("act_param");
-
       filter_dims.insert(
           filter_dims.end(), cur_filter_dims.begin(), cur_filter_dims.end());
       encode_filter_size.push_back(encode_filter_size.back() +
@@ -294,7 +141,6 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
                                        cur_filter_dims[2] * cur_filter_dims[3]);
       encode_bias_size.push_back(encode_bias_size.back() + cur_filter_dims[0]);
       encode_filter_max_size.push_back(encode_filter_max_size.back() + 4);
-
       conv_strides.insert(
           conv_strides.end(), cur_strides.begin(), cur_strides.end());
       if (cur_paddings.size() == 2) {
@@ -316,21 +162,18 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
       act_type.push_back(cur_act_type);
       act_param.push_back(cur_act_param);
     }
-
-    op_desc.SetAttr("OpType", op_type);
-    op_desc.SetAttr("PlaceX", place_x);
-    op_desc.SetAttr("PlaceY", place_y);
-    op_desc.SetAttr("PlaceZ", place_z);
-    op_desc.SetAttr("HasBias", has_bias);
-    op_desc.SetAttr("FilterDims", filter_dims);
-    op_desc.SetAttr("ConvStrides", conv_strides);
-    op_desc.SetAttr("ConvPaddings", conv_paddings);
-    op_desc.SetAttr("ConvDilations", conv_dilations);
-    op_desc.SetAttr("ConvGroups", conv_groups);
-    op_desc.SetAttr("ActType", act_type);
-    op_desc.SetAttr("ActParam", act_param);
-    op_desc.SetAttr("BlockLod", block_lod);
-    op_desc.SetAttr("HasBlockOutput", has_block_output);
+    op_desc.SetAttr("op_type", op_type);
+    op_desc.SetAttr("place_x", place_x);
+    op_desc.SetAttr("place_y", place_y);
+    op_desc.SetAttr("place_z", place_z);
+    op_desc.SetAttr("filter_dims", filter_dims);
+    op_desc.SetAttr("strides", conv_strides);
+    op_desc.SetAttr("paddings", conv_paddings);
+    op_desc.SetAttr("dilations", conv_dilations);
+    op_desc.SetAttr("groups", conv_groups);
+    op_desc.SetAttr("act_type", act_type);
+    op_desc.SetAttr("act_param", act_param);
+    op_desc.SetAttr("block_lod", block_lod);
 
     std::unique_ptr<int16_t[]> encode_filter_int16(
         new int16_t[encode_filter_size.back()]);
@@ -408,29 +251,10 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
     IR_NODE_LINK_TO(new_filter_node, new_op_node);
     IR_NODE_LINK_TO(new_filter_max_node, new_op_node);
     IR_NODE_LINK_TO(new_bias_node, new_op_node);
-
-    if (conv_num_ == 1) {
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_0"));
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_0"));
-    } else if (conv_num_ == 2) {
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_1"));
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_1"));
-    } else if (conv_num_ == 3) {
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_2"));
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_2"));
-    } else if (conv_num_ == 4) {
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_3"));
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_3"));
-    } else {
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_4"));
-      IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_4"));
-    }
+    IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_2"));
+    IR_NODE_LINK_TO(new_op_node, matched.at("conv_out_max_2"));
   }
-
- private:
-  int conv_num_;
 };
-#undef NODE_INIT
 #undef CONV_CONNECT
 #undef CONV_PATTERN
 #undef STR1
@@ -440,11 +264,8 @@ class XPUConsecutiveConv2dFuser : public FuseBase {
 class XPUConsecutiveConv2dFusePass : public ProgramPass {
  public:
   void Apply(const std::unique_ptr<SSAGraph>& graph) override {
-    // only support conv_num in {5, 4, 3}
-    for (auto conv_num : {5, 4, 3, 2, 1}) {
-      fusion::XPUConsecutiveConv2dFuser fuser(conv_num);
-      fuser(graph.get());
-    }
+    fusion::XPUConsecutiveConv2dFuser fuser;
+    fuser(graph.get());
   }
 };
 

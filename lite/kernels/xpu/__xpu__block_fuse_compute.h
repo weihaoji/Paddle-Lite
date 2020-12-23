@@ -1,4 +1,4 @@
-// Copyright (c) 2019 PaddlePaddle Authors. All Rights Reserved.
+// Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,19 +22,17 @@ namespace lite {
 namespace kernels {
 namespace xpu {
 
-class XPUBlockFuseCompute : public KernelLite<TARGET(kXPU), PRECISION(kFloat)> {
+template <typename T, PrecisionType PType>
+class XPUBlockFuseCompute : public KernelLite<TARGET(kXPU), PType> {
  public:
   using param_t = operators::XPUBlockFuseParam;
 
-  virtual void PrepareForRun();
+  void PrepareForRun() override;
 
-  virtual void Run();
-
-  virtual ~XPUBlockFuseCompute() = default;
+  void Run() override;
 
  private:
-  std::vector<xdnn::fusion_block<float, int16_t, int16_t, float>>
-      xpu_fusion_block;
+  std::vector<xdnn::fusion_block<float, int16_t, int16_t, T>> xpu_fusion_block;
 };
 
 }  // namespace xpu

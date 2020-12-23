@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "lite/kernels/xpu/batch_norm_compute.h"
+#include <vector>
 #include "lite/backends/xpu/xpu_header_sitter.h"
 #include "lite/core/op_registry.h"
 
@@ -24,42 +25,27 @@ namespace xpu {
 void BatchNormCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
-
   float epsilon = param.epsilon;
   auto& x_dims = param.x->dims();
-
-  int n, c, h, w;
-  CHECK(x_dims.size() == 2 || x_dims.size() == 4 || x_dims.size() == 3);
-  if (x_dims.size() == 4) {
-    n = x_dims[0];
-    c = x_dims[1];
-    h = x_dims[2];
-    w = x_dims[3];
-  } else if (x_dims.size() == 2) {
-    n = x_dims[0];
-    c = x_dims[1];
-    h = 1;
-    w = 1;
-  } else {
-    n = x_dims[0];
-    c = x_dims[1];
-    h = x_dims[2];
-    w = 1;
+  CHECK_LE(x_dims.size(), 4);
+  std::vector<int> x_shape(4, 1);
+  for (int i = 0; i < x_dims.size(); i++) {
+    x_shape[i] = x_dims[i];
   }
 
-  int r = xdnn::batch_norm_infer_forward(
-      ctx.GetRawContext(),                        /* context */
-      epsilon,                                    /* epsilon */
-      n,                                          /* img_n */
-      c,                                          /* img_c */
-      h,                                          /* img_h */
-      w,                                          /* img_w */
-      param.x->data<float>(),                     /* img_gm */
-      param.y->mutable_data<float>(TARGET(kXPU)), /* out_gm */
-      param.scale->data<float>(),                 /* scale_gm */
-      param.bias->data<float>(),                  /* bias_gm */
-      param.mean->data<float>(),                  /* mean_gm */
-      param.variance->data<float>() /* var__gm */);
+  int r =
+      xdnn::batch_norm_infer_forward(ctx.GetRawContext(),
+                                     epsilon,
+                                     x_shape[0],
+                                     x_shape[1],
+                                     x_shape[2],
+                                     x_shape[3],
+                                     param.x->data<float>(),
+                                     param.y->mutable_data<float>(TARGET(kXPU)),
+                                     param.scale->data<float>(),
+                                     param.bias->data<float>(),
+                                     param.mean->data<float>(),
+                                     param.variance->data<float>());
   CHECK_EQ(r, 0);
 }
 

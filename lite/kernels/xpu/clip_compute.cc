@@ -24,12 +24,22 @@ namespace xpu {
 void ClipCompute::Run() {
   auto& param = this->Param<param_t>();
   auto& ctx = this->ctx_->As<XPUContext>();
+  auto min_tensor = param.min_tensor;
+  auto max_tensor = param.max_tensor;
+  float min = param.min;
+  float max = param.max;
+  if (min_tensor != nullptr) {
+    min = min_tensor->data<float>()[0];
+  }
+  if (max_tensor != nullptr) {
+    max = max_tensor->data<float>()[0];
+  }
   int r = xdnn::clip(ctx.GetRawContext(),
                      param.x->data<float>(),
                      param.out->mutable_data<float>(TARGET(kXPU)),
                      param.x->numel(),
-                     param.min,
-                     param.max);
+                     min,
+                     max);
   CHECK_EQ(r, 0);
 }
 
@@ -41,5 +51,7 @@ void ClipCompute::Run() {
 REGISTER_LITE_KERNEL(
     clip, kXPU, kFloat, kNCHW, paddle::lite::kernels::xpu::ClipCompute, def)
     .BindInput("X", {LiteType::GetTensorTy(TARGET(kXPU))})
+    .BindInput("Min", {LiteType::GetTensorTy(TARGET(kHost))})
+    .BindInput("Max", {LiteType::GetTensorTy(TARGET(kHost))})
     .BindOutput("Out", {LiteType::GetTensorTy(TARGET(kXPU))})
     .Finalize();
